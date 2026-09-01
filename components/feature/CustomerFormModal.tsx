@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Modal, ScrollView, StyleSheet, Alert, Pressable, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
+import { Platform } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -35,6 +36,10 @@ export function CustomerFormModal({ visible, customer, onSave, onClose }: Custom
   }, [customer, visible]);
 
   async function handleImportContact() {
+    if (Platform.OS === 'web') {
+      Alert.alert('تنبيه', 'هذه الميزة غير متاحة على الويب');
+      return;
+    }
     try {
       setImportingContact(true);
       const { status } = await Contacts.requestPermissionsAsync();
@@ -54,7 +59,6 @@ export function CustomerFormModal({ visible, customer, onSave, onClose }: Custom
         Alert.alert('لا توجد جهات اتصال', 'لم يتم العثور على جهات اتصال في الجهاز');
         return;
       }
-      // Show picker
       showContactPicker(data);
     } catch {
       Alert.alert('خطأ', 'تعذر الوصول إلى جهات الاتصال');

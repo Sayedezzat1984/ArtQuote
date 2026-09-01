@@ -4,7 +4,6 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as DocumentPicker from 'expo-document-picker';
-import { captureRef } from 'react-native-view-shot';
 import { Alert } from 'react-native';
 import { Quote, Artwork, Customer } from '@/contexts/AppContext';
 
@@ -297,21 +296,19 @@ export async function exportQuoteAsPDF(quote: Quote, lang: 'ar' | 'en', currency
   }
 }
 
-export async function exportQuoteAsJPG(ref: any, quote: Quote): Promise<void> {
+export async function exportQuoteAsJPG(ref: any, quote: Quote, lang?: 'ar' | 'en', currency?: string, artworks?: Artwork[], customer?: Customer): Promise<void> {
   try {
-    const uri = await captureRef(ref, { format: 'jpg', quality: 0.95 });
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status === 'granted') {
-      await MediaLibrary.saveToLibraryAsync(uri);
-    }
+    // Generate a simplified HTML for JPG preview and print/share it
+    const html = generateQuoteHTML(quote, lang || 'ar', currency || 'ج.م', artworks, customer);
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
     await ensureFolder();
-    const dest = APP_FOLDER + `${quote.quoteNumber}.jpg`;
+    const dest = APP_FOLDER + `${quote.quoteNumber}_preview.pdf`;
     await FileSystem.copyAsync({ from: uri, to: dest });
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', dialogTitle: quote.quoteNumber });
+      await Sharing.shareAsync(dest, { mimeType: 'application/pdf', dialogTitle: quote.quoteNumber });
     }
   } catch {
-    Alert.alert('خطأ', 'فشل في تصدير JPG');
+    Alert.alert('خطأ', 'فشل في تصدير الملف');
   }
 }
 
