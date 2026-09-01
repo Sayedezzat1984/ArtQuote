@@ -10,8 +10,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { ArtworkCard, ArtworkFormModal, EmptyState } from '@/components';
 import { Artwork } from '@/contexts/AppContext';
 
-const CATEGORIES_AR = ['الكل', 'زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي', 'ديجيتال آرت', 'نحت', 'أخرى'];
-const CATEGORIES_EN = ['All', 'Oil on Canvas', 'Watercolor', 'Acrylic', 'Pencil', 'Arabic Calligraphy', 'Digital Art', 'Sculpture', 'Other'];
+const CATEGORIES_AR = ['الكل', 'وحدات إضاءة', 'نحت حر', 'كونسول', 'جداريات', 'مجسمات', 'أخرى'];
+const CATEGORIES_EN = ['All', 'Lighting Units', 'Free Sculpture', 'Console', 'Murals', 'Sculptures', 'Other'];
 
 export default function PortfolioScreen() {
   const { artworks, addArtwork, updateArtwork, deleteArtwork } = useApp();

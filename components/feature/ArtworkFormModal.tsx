@@ -17,7 +17,7 @@ interface ArtworkFormModalProps {
   onClose: () => void;
 }
 
-const CATEGORIES = ['زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي', 'ديجيتال آرت', 'نحت', 'أخرى'];
+const CATEGORIES = ['وحدات إضاءة', 'نحت حر', 'كونسول', 'جداريات', 'مجسمات', 'أخرى'];
 
 export function ArtworkFormModal({ visible, artwork, onSave, onClose }: ArtworkFormModalProps) {
   const [title, setTitle] = useState('');
@@ -136,7 +136,7 @@ export function ArtworkFormModal({ visible, artwork, onSave, onClose }: ArtworkF
             </ScrollView>
 
             <View style={styles.row}>
-              <Input label="السعر (ر.س) *" value={price} onChangeText={setPrice} placeholder="0" keyboardType="numeric" containerStyle={styles.half} />
+              <Input label="السعر (ج.م) *" value={price} onChangeText={setPrice} placeholder="0" keyboardType="numeric" containerStyle={styles.half} />
               <View style={{ width: Spacing.md }} />
               <Input label="الأبعاد" value={dimensions} onChangeText={setDimensions} placeholder="60×80 سم" containerStyle={styles.half} />
             </View>
