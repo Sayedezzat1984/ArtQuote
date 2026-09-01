@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Modal, ScrollView, StyleSheet, Alert, Pressable, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
-import { Platform } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
