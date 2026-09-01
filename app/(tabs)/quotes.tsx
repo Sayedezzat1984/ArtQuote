@@ -7,7 +7,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme
 import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { QuoteCard, QuoteFormModal, EmptyState, ExportModal } from '@/components';
+import { QuoteCard, QuoteFormModal, QuoteDetailModal, EmptyState } from '@/components';
 import { Quote } from '@/contexts/AppContext';
 
 export default function QuotesScreen() {
@@ -16,7 +16,7 @@ export default function QuotesScreen() {
   const { t, currency } = useLanguage();
   const [showForm, setShowForm] = useState(false);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
-  const [exportQuote, setExportQuote] = useState<Quote | null>(null);
+  const [detailQuote, setDetailQuote] = useState<Quote | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Quote['status']>('all');
 
@@ -37,24 +37,20 @@ export default function QuotesScreen() {
   const totalAccepted = quotes.filter(q => q.status === 'accepted').reduce((s, q) => s + q.total, 0);
   const totalPending = quotes.filter(q => q.status === 'sent').reduce((s, q) => s + q.total, 0);
 
-  function handleShare(q: Quote) {
-    const text = `${t('priceQuotes')}: ${q.quoteNumber}\n${t('customer')}: ${q.customerName}\n\n${q.items.map(i => `• ${i.title}: ${(i.price * i.quantity).toLocaleString()} ${currency}`).join('\n')}\n\n${t('grandTotal')}: ${q.total.toLocaleString()} ${currency}${q.notes ? `\n\n${t('notes')}: ${q.notes}` : ''}`;
-    Share.share({ message: text, title: q.quoteNumber });
-  }
-
   function handleDelete(q: Quote) {
     showAlert(`${t('delete')}`, `هل أنت متأكد من حذف "${q.quoteNumber}"؟`, [
       { text: t('cancel'), style: 'cancel' },
-      { text: t('delete'), style: 'destructive', onPress: () => deleteQuote(q.id) },
+      { text: t('delete'), style: 'destructive', onPress: () => { deleteQuote(q.id); setDetailQuote(null); } },
     ]);
   }
 
-  const statusChangeBtns: { s: Quote['status']; label: string }[] = [
-    { s: 'draft', label: t('statusDraft') },
-    { s: 'sent', label: t('statusSent') },
-    { s: 'accepted', label: t('statusAccepted') },
-    { s: 'rejected', label: t('statusRejected') },
-  ];
+  function handleEdit(q: Quote) {
+    setDetailQuote(null);
+    setTimeout(() => {
+      setEditingQuote(q);
+      setShowForm(true);
+    }, 350);
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -124,39 +120,33 @@ export default function QuotesScreen() {
           <EmptyState icon="description" title={t('priceQuotes')} subtitle="اضغط على + لإنشاء أول عرض سعر" />
         }
         renderItem={({ item }) => (
-          <View>
+          <Pressable onPress={() => setDetailQuote(item)} style={styles.cardWrapper}>
             <QuoteCard
               quote={item}
-              onPress={() => {}}
-              onEdit={() => { setEditingQuote(item); setShowForm(true); }}
+              onPress={() => setDetailQuote(item)}
+              onEdit={() => handleEdit(item)}
               onDelete={() => handleDelete(item)}
             />
-            <View style={styles.actionRow}>
-              {/* Export */}
-              <Pressable onPress={() => setExportQuote(item)} style={[styles.actionBtn, styles.exportBtn]}>
-                <MaterialIcons name="picture-as-pdf" size={14} color={Colors.primary} />
-                <Text style={[styles.actionBtnText, { color: Colors.primary }]}>{t('export')}</Text>
-              </Pressable>
-              {/* Share */}
-              <Pressable onPress={() => handleShare(item)} style={[styles.actionBtn, styles.shareBtn]}>
-                <MaterialIcons name="share" size={14} color={Colors.info} />
-                <Text style={[styles.actionBtnText, { color: Colors.info }]}>{t('share')}</Text>
-              </Pressable>
-              {/* Status quick change */}
-              {statusChangeBtns.filter(b => b.s !== item.status).map(b => (
-                <Pressable
-                  key={b.s}
-                  onPress={() => updateQuote(item.id, { status: b.s })}
-                  style={styles.actionBtn}
-                >
-                  <Text style={styles.actionBtnText}>{b.label}</Text>
-                </Pressable>
-              ))}
+            {/* Quick status chips */}
+            <View style={styles.quickStatusRow}>
+              {(['draft', 'sent', 'accepted', 'rejected'] as Quote['status'][]).filter(s => s !== item.status).map(s => {
+                const labels: Record<Quote['status'], string> = { draft: t('statusDraft'), sent: t('statusSent'), accepted: t('statusAccepted'), rejected: t('statusRejected') };
+                return (
+                  <Pressable
+                    key={s}
+                    onPress={() => updateQuote(item.id, { status: s })}
+                    style={styles.quickStatusBtn}
+                  >
+                    <Text style={styles.quickStatusText}>{labels[s]}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          </View>
+          </Pressable>
         )}
       />
 
+      {/* Quote Form */}
       <QuoteFormModal
         visible={showForm}
         quote={editingQuote}
@@ -171,10 +161,15 @@ export default function QuotesScreen() {
         onClose={() => { setShowForm(false); setEditingQuote(null); }}
       />
 
-      <ExportModal
-        visible={exportQuote !== null}
-        quote={exportQuote}
-        onClose={() => setExportQuote(null)}
+      {/* Quote Detail */}
+      <QuoteDetailModal
+        visible={detailQuote !== null}
+        quote={detailQuote}
+        artworks={artworks}
+        customers={customers}
+        onClose={() => setDetailQuote(null)}
+        onEdit={() => detailQuote && handleEdit(detailQuote)}
+        onDelete={() => detailQuote && handleDelete(detailQuote)}
       />
     </SafeAreaView>
   );
@@ -183,19 +178,14 @@ export default function QuotesScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.base, paddingVertical: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   addBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
   summaryRow: { flexDirection: 'row', gap: Spacing.sm, padding: Spacing.base, paddingBottom: Spacing.sm },
   summaryCard: {
@@ -222,18 +212,16 @@ const styles = StyleSheet.create({
   filterChipText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   filterChipTextActive: { color: Colors.primary },
   listContent: { padding: Spacing.base, paddingTop: Spacing.sm },
-  actionRow: {
+  cardWrapper: { marginBottom: Spacing.xs },
+  quickStatusRow: {
     flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap',
     paddingHorizontal: Spacing.sm, paddingBottom: Spacing.md,
     justifyContent: 'flex-end', marginTop: -Spacing.sm,
   },
-  actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
+  quickStatusBtn: {
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
     paddingHorizontal: Spacing.sm, paddingVertical: 5,
     borderWidth: 1, borderColor: Colors.border,
   },
-  exportBtn: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary + '60' },
-  shareBtn: { backgroundColor: Colors.infoSurface, borderColor: Colors.info + '60' },
-  actionBtnText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
+  quickStatusText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
 });

@@ -27,6 +27,25 @@ const STATUS_OPTIONS: { value: Quote['status']; label: string }[] = [
   { value: 'rejected', label: 'مرفوض' },
 ];
 
+const PAYMENT_TERMS_OPTIONS = [
+  'دفع كامل مقدماً',
+  '50% مقدم والباقي عند التسليم',
+  '30% مقدم والباقي خلال 30 يوم',
+  'دفع عند التسليم',
+  'تحويل بنكي',
+  'كاش',
+];
+
+const DELIVERY_PERIOD_OPTIONS = [
+  'فوري',
+  '3 أيام عمل',
+  '7 أيام عمل',
+  '2 أسبوع',
+  'شهر واحد',
+  'شهران',
+  '3 أشهر',
+];
+
 export function QuoteFormModal({ visible, quote, customers, artworks, preSelectedCustomer, onSave, onClose }: QuoteFormModalProps) {
   const { currency, t } = useLanguage();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -35,8 +54,12 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<Quote['status']>('draft');
   const [validUntil, setValidUntil] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [deliveryPeriod, setDeliveryPeriod] = useState('');
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showArtworkPicker, setShowArtworkPicker] = useState(false);
+  const [showPaymentPicker, setShowPaymentPicker] = useState(false);
+  const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -51,15 +74,19 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
       setDiscount(quote.discount.toString());
       setNotes(quote.notes);
       setStatus(quote.status);
-      setValidUntil(quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('ar-SA') : '');
+      setPaymentTerms(quote.paymentTerms || '');
+      setDeliveryPeriod(quote.deliveryPeriod || '');
+      setValidUntil(quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('ar-EG') : '');
     } else {
       setSelectedCustomer(preSelectedCustomer || null);
       setItems([]);
       setDiscount('0');
       setNotes('');
       setStatus('draft');
+      setPaymentTerms('');
+      setDeliveryPeriod('');
       const d = new Date(); d.setDate(d.getDate() + 30);
-      setValidUntil(d.toLocaleDateString('ar-SA'));
+      setValidUntil(d.toLocaleDateString('ar-EG'));
     }
   }, [quote, visible, preSelectedCustomer, customers]);
 
@@ -96,6 +123,8 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
         total,
         status,
         notes: notes.trim(),
+        paymentTerms: paymentTerms.trim(),
+        deliveryPeriod: deliveryPeriod.trim(),
         validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       });
       setLoading(false);
@@ -107,7 +136,12 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
       <View style={globalStyles.overlay}>
         <View style={[globalStyles.modalSheet, { maxHeight: '98%' }]}>
           <View style={globalStyles.modalHandle} />
-          <Text style={globalStyles.modalTitle}>{quote ? 'تعديل عرض السعر' : 'عرض سعر جديد'}</Text>
+          <View style={styles.titleRow}>
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <MaterialIcons name="close" size={20} color={Colors.textSecondary} />
+            </Pressable>
+            <Text style={globalStyles.modalTitle}>{quote ? 'تعديل عرض السعر' : 'عرض سعر جديد'}</Text>
+          </View>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
             {/* Customer */}
@@ -191,6 +225,30 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
               </View>
             </View>
 
+            {/* Payment Terms */}
+            <Text style={styles.sectionLabel}>شروط الدفع</Text>
+            <Pressable onPress={() => setShowPaymentPicker(true)} style={styles.pickerBtn}>
+              <View style={styles.pickerPlaceholder}>
+                <MaterialIcons name="payment" size={18} color={Colors.primary} />
+                <Text style={[styles.pickerPlaceholderText, paymentTerms ? { color: Colors.textPrimary } : {}]}>
+                  {paymentTerms || 'اختر شروط الدفع...'}
+                </Text>
+              </View>
+            </Pressable>
+            <Input value={paymentTerms} onChangeText={setPaymentTerms} placeholder="أو اكتب شروط الدفع يدوياً..." containerStyle={{ marginTop: -Spacing.sm }} />
+
+            {/* Delivery Period */}
+            <Text style={styles.sectionLabel}>مدة التسليم</Text>
+            <Pressable onPress={() => setShowDeliveryPicker(true)} style={styles.pickerBtn}>
+              <View style={styles.pickerPlaceholder}>
+                <MaterialIcons name="schedule" size={18} color={Colors.primary} />
+                <Text style={[styles.pickerPlaceholderText, deliveryPeriod ? { color: Colors.textPrimary } : {}]}>
+                  {deliveryPeriod || 'اختر مدة التسليم...'}
+                </Text>
+              </View>
+            </Pressable>
+            <Input value={deliveryPeriod} onChangeText={setDeliveryPeriod} placeholder="أو اكتب مدة التسليم يدوياً..." containerStyle={{ marginTop: -Spacing.sm }} />
+
             {/* Status */}
             <Text style={styles.sectionLabel}>حالة العرض</Text>
             <View style={styles.statusRow}>
@@ -201,7 +259,7 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
               ))}
             </View>
 
-            <Input label="ملاحظات" value={notes} onChangeText={setNotes} placeholder="شروط الدفع، التوصيل، إلخ..." multiline numberOfLines={3} />
+            <Input label="ملاحظات إضافية" value={notes} onChangeText={setNotes} placeholder="أي ملاحظات للعميل..." multiline numberOfLines={3} />
 
             <View style={styles.btnRow}>
               <Button title="إلغاء" onPress={onClose} variant="ghost" style={styles.halfBtn} />
@@ -255,53 +313,86 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
           </View>
         </View>
       </Modal>
+
+      {/* Payment Terms Picker */}
+      <Modal visible={showPaymentPicker} transparent animationType="slide" onRequestClose={() => setShowPaymentPicker(false)}>
+        <View style={globalStyles.overlay}>
+          <View style={globalStyles.modalSheet}>
+            <View style={globalStyles.modalHandle} />
+            <Text style={globalStyles.modalTitle}>اختر شروط الدفع</Text>
+            <FlatList
+              data={PAYMENT_TERMS_OPTIONS}
+              keyExtractor={i => i}
+              renderItem={({ item }) => (
+                <Pressable onPress={() => { setPaymentTerms(item); setShowPaymentPicker(false); }} style={styles.optionItem}>
+                  <MaterialIcons name="payment" size={16} color={Colors.primary} />
+                  <Text style={styles.optionText}>{item}</Text>
+                </Pressable>
+              )}
+              style={{ maxHeight: 350 }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delivery Period Picker */}
+      <Modal visible={showDeliveryPicker} transparent animationType="slide" onRequestClose={() => setShowDeliveryPicker(false)}>
+        <View style={globalStyles.overlay}>
+          <View style={globalStyles.modalSheet}>
+            <View style={globalStyles.modalHandle} />
+            <Text style={globalStyles.modalTitle}>اختر مدة التسليم</Text>
+            <FlatList
+              data={DELIVERY_PERIOD_OPTIONS}
+              keyExtractor={i => i}
+              renderItem={({ item }) => (
+                <Pressable onPress={() => { setDeliveryPeriod(item); setShowDeliveryPicker(false); }} style={styles.optionItem}>
+                  <MaterialIcons name="schedule" size={16} color={Colors.primary} />
+                  <Text style={styles.optionText}>{item}</Text>
+                </Pressable>
+              )}
+              style={{ maxHeight: 350 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionLabel: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
-    color: Colors.textSecondary,
-    textAlign: 'right',
-    marginBottom: Spacing.sm,
-  },
-  pickerBtn: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.base,
-  },
-  selectedCustomer: {
+  titleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  selectedName: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
-  selectedPhone: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right' },
-  pickerPlaceholder: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    justifyContent: 'flex-end',
-  },
-  pickerPlaceholderText: { fontSize: FontSize.base, color: Colors.primary },
-  itemsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  itemCard: {
+  closeBtn: {
+    width: 34, height: 34, borderRadius: 17,
     backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  sectionLabel: {
+    fontSize: FontSize.sm, fontWeight: FontWeight.semibold,
+    color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm,
+  },
+  pickerBtn: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.base,
+  },
+  selectedCustomer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  selectedName: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
+  selectedPhone: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right' },
+  pickerPlaceholder: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, justifyContent: 'flex-end' },
+  pickerPlaceholderText: { fontSize: FontSize.base, color: Colors.primary },
+  itemsHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: Spacing.md,
+  },
+  itemCard: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    padding: Spacing.md, marginBottom: Spacing.sm,
+    borderWidth: 1, borderColor: Colors.border,
   },
   itemTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.sm },
   itemControls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, justifyContent: 'flex-end', marginBottom: Spacing.xs },
@@ -311,65 +402,48 @@ const styles = StyleSheet.create({
   priceInput: { width: 90, marginBottom: 0 },
   itemSubtotal: { fontSize: FontSize.xs, color: Colors.primary, textAlign: 'right', fontWeight: FontWeight.medium },
   emptyItems: {
-    alignItems: 'center',
-    padding: Spacing.xl,
-    gap: Spacing.sm,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    marginBottom: Spacing.base,
+    alignItems: 'center', padding: Spacing.xl, gap: Spacing.sm,
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, marginBottom: Spacing.base,
   },
   emptyItemsText: { fontSize: FontSize.sm, color: Colors.textMuted },
   totalsCard: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.base,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: Spacing.sm,
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    padding: Spacing.md, marginBottom: Spacing.base,
+    borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm,
   },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
   totalValue: { fontSize: FontSize.base, color: Colors.textPrimary, fontWeight: FontWeight.medium },
   discountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   discountInput: { width: 100, marginBottom: 0 },
-  grandTotal: {
-    paddingTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
+  grandTotal: { paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
   grandTotalLabel: { fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: FontWeight.semibold },
   grandTotalValue: { fontSize: FontSize.xl, color: Colors.primary, fontWeight: FontWeight.bold },
   statusRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.base, flexWrap: 'wrap', justifyContent: 'flex-end' },
   statusBtn: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.border,
   },
   statusBtnActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
   statusBtnText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   statusBtnTextActive: { color: Colors.primary },
   btnRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.base },
   halfBtn: { flex: 1 },
-  customerPickerItem: {
-    padding: Spacing.base,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
+  customerPickerItem: { padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border },
   customerPickerName: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.textPrimary, textAlign: 'right' },
   customerPickerPhone: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right' },
   artworkPickerItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: Spacing.base,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   artworkPickerInfo: { flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 1 },
   artworkPickerTitle: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.textPrimary, textAlign: 'right' },
   artworkPickerPrice: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary, marginLeft: Spacing.md },
+  optionItem: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    justifyContent: 'flex-end',
+  },
+  optionText: { fontSize: FontSize.base, color: Colors.textPrimary, textAlign: 'right' },
 });

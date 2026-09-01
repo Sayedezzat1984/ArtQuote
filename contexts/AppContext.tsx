@@ -69,6 +69,8 @@ export interface Quote {
   total: number;
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
   notes: string;
+  paymentTerms: string;
+  deliveryPeriod: string;
   createdAt: string;
   validUntil: string;
 }
