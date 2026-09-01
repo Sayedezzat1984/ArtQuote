@@ -27,3 +27,5 @@ export const loadQuotes = () => load<any>(KEYS.quotes);
 export const saveQuotes = (d: any[]) => save(KEYS.quotes, d);
 export const loadMaterials = () => load<any>(KEYS.materials);
 export const saveMaterials = (d: any[]) => save(KEYS.materials, d);
+export const loadCategories = () => load<any>('artwork_categories_v1');
+export const saveCategories = (d: any[]) => save('artwork_categories_v1', d);

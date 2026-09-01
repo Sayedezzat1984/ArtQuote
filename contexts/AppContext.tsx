@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { loadArtworks, saveArtworks, loadCustomers, saveCustomers, loadQuotes, saveQuotes, loadMaterials, saveMaterials } from '@/services/storage';
+import { loadArtworks, saveArtworks, loadCustomers, saveCustomers, loadQuotes, saveQuotes, loadMaterials, saveMaterials, loadCategories, saveCategories } from '@/services/storage';
 import { mockArtworks, mockCustomers, mockQuotes } from '@/services/mockData';
 
 export interface Artwork {
@@ -32,6 +32,12 @@ export interface Material {
   unitType?: string;
   unitPrice?: number;
   stock?: number;
+  createdAt: string;
+}
+
+export interface ArtworkCategory {
+  id: string;
+  name: string;
   createdAt: string;
 }
 
@@ -85,6 +91,9 @@ interface AppContextType {
   addMaterial: (material: Omit<Material, 'id' | 'createdAt'>) => Promise<void>;
   updateMaterial: (id: string, material: Partial<Material>) => Promise<void>;
   deleteMaterial: (id: string) => Promise<void>;
+  artworkCategories: ArtworkCategory[];
+  addArtworkCategory: (name: string) => Promise<void>;
+  deleteArtworkCategory: (id: string) => Promise<void>;
   restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => Promise<void>;
 }
 
@@ -95,21 +104,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [artworkCategories, setArtworkCategories] = useState<ArtworkCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function init() {
       try {
-        const [storedArtworks, storedCustomers, storedQuotes, storedMaterials] = await Promise.all([
+        const [storedArtworks, storedCustomers, storedQuotes, storedMaterials, storedCategories] = await Promise.all([
           loadArtworks(),
           loadCustomers(),
           loadQuotes(),
           loadMaterials(),
+          loadCategories(),
         ]);
         setArtworks(storedArtworks.length > 0 ? storedArtworks : mockArtworks);
         setCustomers(storedCustomers.length > 0 ? storedCustomers : mockCustomers);
         setQuotes(storedQuotes.length > 0 ? storedQuotes : mockQuotes);
         setMaterials(storedMaterials.length > 0 ? storedMaterials : []);
+        const defaultCategories: ArtworkCategory[] = [
+          { id: '1', name: 'نحت جداريات', createdAt: new Date().toISOString() },
+          { id: '2', name: 'نحت حر', createdAt: new Date().toISOString() },
+          { id: '3', name: 'وحدات إضاءة', createdAt: new Date().toISOString() },
+          { id: '4', name: 'منزلي', createdAt: new Date().toISOString() },
+          { id: '5', name: 'أخرى', createdAt: new Date().toISOString() },
+        ];
+        if (storedCategories.length > 0) {
+          setArtworkCategories(storedCategories);
+        } else {
+          setArtworkCategories(defaultCategories);
+          await saveCategories(defaultCategories);
+        }
         if (storedArtworks.length === 0) await saveArtworks(mockArtworks);
         if (storedCustomers.length === 0) await saveCustomers(mockCustomers);
         if (storedQuotes.length === 0) await saveQuotes(mockQuotes);
@@ -203,6 +227,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await saveMaterials(updated);
   }, [materials]);
 
+  const addArtworkCategory = useCallback(async (name: string) => {
+    const newCat: ArtworkCategory = { id: Date.now().toString(), name: name.trim(), createdAt: new Date().toISOString() };
+    const updated = [...artworkCategories, newCat];
+    setArtworkCategories(updated);
+    await saveCategories(updated);
+  }, [artworkCategories]);
+
+  const deleteArtworkCategory = useCallback(async (id: string) => {
+    const updated = artworkCategories.filter(c => c.id !== id);
+    setArtworkCategories(updated);
+    await saveCategories(updated);
+  }, [artworkCategories]);
+
   const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => {
     setArtworks(data.artworks);
     setCustomers(data.customers);
@@ -223,6 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote, deleteQuote,
       addMaterial, updateMaterial, deleteMaterial,
+      artworkCategories, addArtworkCategory, deleteArtworkCategory,
       restoreBackup,
     }}>
       {children}

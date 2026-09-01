@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, ScrollView, StyleSheet, Pressable, Switch, Alert, FlatList } from 'react-native';
+import { View, Text, Modal, ScrollView, StyleSheet, Pressable, Switch, Alert, TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -8,25 +8,23 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { globalStyles } from '@/constants/styles';
-import { Artwork, Material } from '@/contexts/AppContext';
+import { Artwork, Material, ArtworkCategory } from '@/contexts/AppContext';
 
 interface ArtworkFormModalProps {
   visible: boolean;
   artwork?: Artwork | null;
   materials: Material[];
+  artworkCategories: ArtworkCategory[];
   onSave: (data: Omit<Artwork, 'id' | 'createdAt'>) => void;
   onClose: () => void;
+  onAddCategory?: (name: string) => Promise<void>;
+  onDeleteCategory?: (id: string) => Promise<void>;
 }
 
-const CATEGORIES = [
-  'زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي',
-  'ديجيتال آرت', 'أقسام', 'وحدات إضاءة', 'نحت حر', 'كونسول', 'جداريات', 'مجسمات', 'أخرى'
-];
-
-export function ArtworkFormModal({ visible, artwork, materials, onSave, onClose }: ArtworkFormModalProps) {
+export function ArtworkFormModal({ visible, artwork, materials, artworkCategories, onSave, onClose, onAddCategory, onDeleteCategory }: ArtworkFormModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState('');
   const [price, setPrice] = useState('');
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
@@ -37,6 +35,8 @@ export function ArtworkFormModal({ visible, artwork, materials, onSave, onClose 
   const [images, setImages] = useState<string[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
 
   useEffect(() => {
     if (artwork) {
@@ -53,12 +53,13 @@ export function ArtworkFormModal({ visible, artwork, materials, onSave, onClose 
       setImages(artwork.images?.length ? artwork.images : (artwork.image ? [artwork.image] : []));
       setSelectedMaterials(artwork.materialIds || []);
     } else {
-      setTitle(''); setDescription(''); setCategory(CATEGORIES[0]);
+      setTitle(''); setDescription('');
+      setCategory(artworkCategories[0]?.name || '');
       setPrice(''); setWidth(''); setHeight(''); setDepth('');
       setDimensionUnit('cm'); setYear(new Date().getFullYear().toString());
       setAvailable(true); setImages([]); setSelectedMaterials([]);
     }
-  }, [artwork, visible]);
+  }, [artwork, visible, artworkCategories]);
 
   async function pickImages() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -113,19 +114,33 @@ export function ArtworkFormModal({ visible, artwork, materials, onSave, onClose 
     }, 300);
   }
 
+  async function handleAddCategory() {
+    if (!newCatName.trim()) return;
+    await onAddCategory?.(newCatName.trim());
+    setCategory(newCatName.trim());
+    setNewCatName('');
+  }
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={globalStyles.overlay}>
         <View style={[globalStyles.modalSheet, { maxHeight: '97%' }]}>
           <View style={globalStyles.modalHandle} />
-          <Text style={globalStyles.modalTitle}>{artwork ? 'تعديل العمل الفني' : 'إضافة عمل فني جديد'}</Text>
-          <ScrollView showsVerticalScrollIndicator={false}>
 
+          {/* Back row */}
+          <View style={styles.topRow}>
+            <Pressable onPress={onClose} style={styles.backBtn}>
+              <MaterialIcons name="arrow-back" size={18} color={Colors.textSecondary} />
+              <Text style={styles.backBtnText}>رجوع</Text>
+            </Pressable>
+            <Text style={globalStyles.modalTitle}>{artwork ? 'تعديل العمل الفني' : 'إضافة عمل فني'}</Text>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
             {/* Images Section */}
             <Text style={styles.sectionLabel}>الصور ({images.length}/10)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
               <View style={styles.imagesRow}>
-                {/* Add button */}
                 <Pressable onPress={pickImages} style={styles.addImageBtn}>
                   <MaterialIcons name="add-photo-alternate" size={28} color={Colors.primary} />
                   <Text style={styles.addImageText}>صور{'\n'}متعددة</Text>
@@ -146,15 +161,58 @@ export function ArtworkFormModal({ visible, artwork, materials, onSave, onClose 
               </View>
             </ScrollView>
 
-            <Input label="عنوان العمل *" value={title} onChangeText={setTitle} placeholder="مثال: لوحة الغروب الذهبي" />
+            <Input label="عنوان العمل *" value={title} onChangeText={setTitle} placeholder="مثال: مجسم الصقر" />
             <Input label="الوصف" value={description} onChangeText={setDescription} placeholder="وصف العمل الفني..." multiline numberOfLines={3} />
 
-            <Text style={styles.sectionLabel}>التصنيف</Text>
+            {/* Category */}
+            <View style={styles.catHeader}>
+              <Pressable onPress={() => setShowCatManager(!showCatManager)} style={styles.manageCatBtn}>
+                <MaterialIcons name={showCatManager ? 'close' : 'edit'} size={14} color={Colors.primary} />
+                <Text style={styles.manageCatBtnText}>{showCatManager ? 'إغلاق' : 'إدارة الأنواع'}</Text>
+              </Pressable>
+              <Text style={styles.sectionLabel}>نوع العمل</Text>
+            </View>
+
+            {/* Category manager */}
+            {showCatManager ? (
+              <View style={styles.catManager}>
+                <View style={styles.addCatRow}>
+                  <Pressable onPress={handleAddCategory} style={styles.addCatBtn}>
+                    <MaterialIcons name="add" size={18} color={Colors.textOnPrimary} />
+                  </Pressable>
+                  <TextInput
+                    value={newCatName}
+                    onChangeText={setNewCatName}
+                    placeholder="اسم النوع الجديد..."
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.addCatInput}
+                    textAlign="right"
+                  />
+                </View>
+                <View style={styles.catListEdit}>
+                  {artworkCategories.map(cat => (
+                    <View key={cat.id} style={styles.catEditItem}>
+                      <Pressable
+                        onPress={() => onDeleteCategory?.(cat.id)}
+                        style={styles.catDeleteBtn}
+                        hitSlop={8}
+                      >
+                        <MaterialIcons name="remove-circle" size={18} color={Colors.error} />
+                      </Pressable>
+                      <Text style={styles.catEditName}>{cat.name}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Category selector */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
               <View style={styles.catRow}>
-                {CATEGORIES.map(cat => (
-                  <Pressable key={cat} onPress={() => setCategory(cat)} style={[styles.catBtn, category === cat && styles.catBtnActive]}>
-                    <Text style={[styles.catBtnText, category === cat && styles.catBtnTextActive]}>{cat}</Text>
+                {artworkCategories.map(cat => (
+                  <Pressable key={cat.id} onPress={() => setCategory(cat.name)}
+                    style={[styles.catBtn, category === cat.name && styles.catBtnActive]}>
+                    <Text style={[styles.catBtnText, category === cat.name && styles.catBtnTextActive]}>{cat.name}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -217,6 +275,16 @@ export function ArtworkFormModal({ visible, artwork, materials, onSave, onClose 
 }
 
 const styles = StyleSheet.create({
+  topRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.base,
+  },
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  backBtnText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   sectionLabel: {
     fontSize: FontSize.sm, fontWeight: FontWeight.medium,
     color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm,
@@ -243,6 +311,34 @@ const styles = StyleSheet.create({
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center',
   },
+  catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  manageCatBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md, paddingVertical: 6,
+    borderWidth: 1, borderColor: Colors.primary + '60',
+  },
+  manageCatBtnText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
+  catManager: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    padding: Spacing.md, marginBottom: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  addCatRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md, alignItems: 'center' },
+  addCatInput: {
+    flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    fontSize: FontSize.sm, color: Colors.textPrimary,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  addCatBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  catListEdit: { gap: Spacing.sm },
+  catEditItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, justifyContent: 'flex-end' },
+  catEditName: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: FontWeight.medium, flex: 1, textAlign: 'right' },
+  catDeleteBtn: { padding: 2 },
   catScroll: { marginBottom: Spacing.base },
   catRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: 2 },
   catBtn: {
@@ -276,7 +372,6 @@ const styles = StyleSheet.create({
   materialDot: { width: 8, height: 8, borderRadius: 4 },
   materialChipText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   materialChipTextActive: { color: Colors.primary },
-  row: { flexDirection: 'row' },
   switchRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
     justifyContent: 'flex-end', marginBottom: Spacing.xl,

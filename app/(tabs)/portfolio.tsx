@@ -9,30 +9,26 @@ import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ArtworkCard, ArtworkFormModal, EmptyState } from '@/components';
 import { ArtworkDetailModal } from '@/components/feature/ArtworkDetailModal';
-import { MaterialsModal } from '@/components/feature/MaterialsModal';
 import { Artwork } from '@/contexts/AppContext';
 
-const CATEGORIES_AR = ['الكل', 'زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي', 'ديجيتال آرت', 'أقسام', 'وحدات إضاءة', 'نحت حر', 'كونسول', 'جداريات', 'مجسمات', 'أخرى'];
-const CATEGORIES_EN = ['All', 'Oil on Canvas', 'Watercolor', 'Acrylic', 'Pencil', 'Arabic Calligraphy', 'Digital Art', 'Sections', 'Lighting Units', 'Free Sculpture', 'Console', 'Murals', 'Sculptures', 'Other'];
-
 export default function PortfolioScreen() {
-  const { artworks, materials, addArtwork, updateArtwork, deleteArtwork } = useApp();
+  const { artworks, materials, artworkCategories, addArtwork, updateArtwork, deleteArtwork, addArtworkCategory, deleteArtworkCategory } = useApp();
   const { showAlert } = useAlert();
   const { t, lang } = useLanguage();
   const [showForm, setShowForm] = useState(false);
-  const [showMaterials, setShowMaterials] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
   const [detailArtwork, setDetailArtwork] = useState<Artwork | null>(null);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState('الكل');
   const [filter, setFilter] = useState(0);
 
-  const CATEGORIES = lang === 'ar' ? CATEGORIES_AR : CATEGORIES_EN;
+  const ALL_LABEL = lang === 'ar' ? 'الكل' : 'All';
   const FILTERS = lang === 'ar' ? ['الكل', 'متاح', 'مباع'] : ['All', 'Available', 'Sold'];
+  const categoryLabels = [ALL_LABEL, ...artworkCategories.map(c => c.name)];
 
   const filtered = artworks.filter(a => {
     const matchSearch = !search || a.title.includes(search) || a.description.includes(search);
-    const matchCat = category === 0 || a.category === CATEGORIES_AR[category];
+    const matchCat = categoryFilter === ALL_LABEL || a.category === categoryFilter;
     const matchFilter = filter === 0 || (filter === 1 && a.available) || (filter === 2 && !a.available);
     return matchSearch && matchCat && matchFilter;
   });
@@ -56,15 +52,9 @@ export default function PortfolioScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <View style={styles.headerRight}>
-          <Pressable onPress={() => { setEditingArtwork(null); setShowForm(true); }} style={styles.addBtn}>
-            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-          </Pressable>
-          <Pressable onPress={() => setShowMaterials(true)} style={styles.materialsBtn}>
-            <MaterialIcons name="layers" size={18} color={Colors.primary} />
-            <Text style={styles.materialsBtnText}>الخامات ({materials.length})</Text>
-          </Pressable>
-        </View>
+        <Pressable onPress={() => { setEditingArtwork(null); setShowForm(true); }} style={styles.addBtn}>
+          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+        </Pressable>
         <Text style={styles.title}>{t('artworkAlbum')}</Text>
       </View>
 
@@ -83,17 +73,17 @@ export default function PortfolioScreen() {
       {/* Category Filter */}
       <View style={styles.filterOuter}>
         <FlatList
-          data={CATEGORIES}
+          data={categoryLabels}
           horizontal
           keyExtractor={(_, i) => i.toString()}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterContent}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <Pressable
-              onPress={() => setCategory(index)}
-              style={[styles.filterChip, category === index && styles.filterChipActive]}
+              onPress={() => setCategoryFilter(item)}
+              style={[styles.filterChip, categoryFilter === item && styles.filterChipActive]}
             >
-              <Text style={[styles.filterChipText, category === index && styles.filterChipTextActive]}>{item}</Text>
+              <Text style={[styles.filterChipText, categoryFilter === item && styles.filterChipTextActive]}>{item}</Text>
             </Pressable>
           )}
         />
@@ -133,8 +123,11 @@ export default function PortfolioScreen() {
         visible={showForm}
         artwork={editingArtwork}
         materials={materials}
+        artworkCategories={artworkCategories}
         onSave={handleSave}
         onClose={() => { setShowForm(false); setEditingArtwork(null); }}
+        onAddCategory={addArtworkCategory}
+        onDeleteCategory={deleteArtworkCategory}
       />
 
       <ArtworkDetailModal
@@ -145,8 +138,6 @@ export default function PortfolioScreen() {
         onEdit={() => handleEdit(detailArtwork!)}
         onDelete={() => handleDelete(detailArtwork!)}
       />
-
-      <MaterialsModal visible={showMaterials} onClose={() => setShowMaterials(false)} />
     </SafeAreaView>
   );
 }
@@ -159,18 +150,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  headerRight: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
   addBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
-  materialsBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.primarySurface, borderRadius: Radius.full,
-    paddingHorizontal: Spacing.md, paddingVertical: 8,
-    borderWidth: 1, borderColor: Colors.primary + '60',
-  },
-  materialsBtnText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
