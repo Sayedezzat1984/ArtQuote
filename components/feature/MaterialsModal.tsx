@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { useState } from 'react';
-import { View, Text, Modal, ScrollView, StyleSheet, Pressable, TextInput, FlatList } from 'react-native';
+import { View, Text, Modal, ScrollView, StyleSheet, Pressable, FlatList } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { globalStyles } from '@/constants/styles';
@@ -15,6 +15,19 @@ const PRESET_COLORS = [
   '#A084E8', '#E88AAA', '#84C9E8', '#8AE8A0', '#E8D884',
 ];
 
+export type UnitType = 'meter' | 'sheet' | 'kg' | 'gram' | 'box' | 'liter' | 'piece' | 'roll';
+
+const UNIT_OPTIONS: { key: UnitType; label: string; short: string }[] = [
+  { key: 'meter', label: 'متر', short: 'م' },
+  { key: 'sheet', label: 'لوح', short: 'لوح' },
+  { key: 'kg', label: 'كيلوجرام', short: 'كجم' },
+  { key: 'gram', label: 'جرام', short: 'جم' },
+  { key: 'box', label: 'علبة', short: 'علبة' },
+  { key: 'liter', label: 'لتر', short: 'لتر' },
+  { key: 'piece', label: 'قطعة', short: 'قطعة' },
+  { key: 'roll', label: 'رول', short: 'رول' },
+];
+
 interface MaterialFormProps {
   material?: Material | null;
   onSave: (data: Omit<Material, 'id' | 'createdAt'>) => void;
@@ -27,6 +40,11 @@ function MaterialForm({ material, onSave, onClose }: MaterialFormProps) {
   const [color, setColor] = useState(material?.color || PRESET_COLORS[0]);
   const [supplier, setSupplier] = useState(material?.supplier || '');
   const [notes, setNotes] = useState(material?.notes || '');
+  const [unitType, setUnitType] = useState<UnitType>((material?.unitType as UnitType) || 'piece');
+  const [unitPrice, setUnitPrice] = useState(material?.unitPrice?.toString() || '');
+  const [stock, setStock] = useState(material?.stock?.toString() || '');
+
+  const selectedUnit = UNIT_OPTIONS.find(u => u.key === unitType);
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
@@ -34,7 +52,44 @@ function MaterialForm({ material, onSave, onClose }: MaterialFormProps) {
       <Input label="الوصف" value={description} onChangeText={setDescription} placeholder="وصف الخامة وخصائصها..." multiline numberOfLines={3} />
       <Input label="المورد / المصدر" value={supplier} onChangeText={setSupplier} placeholder="اسم الشركة أو المورد" />
 
-      <Text style={styles.colorLabel}>اللون التعريفي</Text>
+      {/* Unit Type */}
+      <Text style={styles.fieldLabel}>وحدة القياس</Text>
+      <View style={styles.unitsGrid}>
+        {UNIT_OPTIONS.map(u => (
+          <Pressable
+            key={u.key}
+            onPress={() => setUnitType(u.key)}
+            style={[styles.unitChip, unitType === u.key && styles.unitChipActive]}
+          >
+            <Text style={[styles.unitChipText, unitType === u.key && styles.unitChipTextActive]}>
+              {u.label}
+            </Text>
+            <Text style={[styles.unitChipShort, unitType === u.key && styles.unitChipShortActive]}>
+              {u.short}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Unit Price */}
+      <Input
+        label={`سعر الوحدة (ج.م / ${selectedUnit?.label})`}
+        value={unitPrice}
+        onChangeText={setUnitPrice}
+        placeholder="0.00"
+        keyboardType="numeric"
+      />
+
+      {/* Stock */}
+      <Input
+        label={`الكمية المتاحة (${selectedUnit?.short})`}
+        value={stock}
+        onChangeText={setStock}
+        placeholder="0"
+        keyboardType="numeric"
+      />
+
+      <Text style={styles.fieldLabel}>اللون التعريفي</Text>
       <View style={styles.colorsRow}>
         {PRESET_COLORS.map(c => (
           <Pressable key={c} onPress={() => setColor(c)}
@@ -52,7 +107,16 @@ function MaterialForm({ material, onSave, onClose }: MaterialFormProps) {
           title={material ? 'حفظ التعديلات' : 'إضافة الخامة'}
           onPress={() => {
             if (!name.trim()) return;
-            onSave({ name: name.trim(), description, color, supplier, notes });
+            onSave({
+              name: name.trim(),
+              description,
+              color,
+              supplier,
+              notes,
+              unitType,
+              unitPrice: unitPrice ? Number(unitPrice) : 0,
+              stock: stock ? Number(stock) : 0,
+            });
           }}
           style={styles.half}
         />
@@ -77,6 +141,13 @@ export function MaterialsModal({ visible, onClose }: MaterialsScreenProps) {
       { text: 'إلغاء', style: 'cancel' },
       { text: 'حذف', style: 'destructive', onPress: () => deleteMaterial(m.id) },
     ]);
+  }
+
+  function getUnitLabel(key?: string) {
+    return UNIT_OPTIONS.find(u => u.key === key)?.label || 'وحدة';
+  }
+  function getUnitShort(key?: string) {
+    return UNIT_OPTIONS.find(u => u.key === key)?.short || 'وحدة';
   }
 
   return (
@@ -136,6 +207,28 @@ export function MaterialsModal({ visible, onClose }: MaterialsScreenProps) {
                       {item.supplier ? <Text style={styles.materialSupplier}>{item.supplier}</Text> : null}
                     </View>
                   </View>
+
+                  {/* Unit & Price Row */}
+                  <View style={styles.unitPriceRow}>
+                    {item.unitType ? (
+                      <View style={styles.unitBadge}>
+                        <MaterialIcons name="straighten" size={12} color={Colors.info} />
+                        <Text style={styles.unitBadgeText}>{getUnitLabel(item.unitType)}</Text>
+                      </View>
+                    ) : null}
+                    {item.unitPrice ? (
+                      <View style={styles.priceBadge}>
+                        <Text style={styles.priceBadgeText}>{item.unitPrice.toLocaleString()} ج.م / {getUnitShort(item.unitType)}</Text>
+                      </View>
+                    ) : null}
+                    {item.stock ? (
+                      <View style={styles.stockBadge}>
+                        <MaterialIcons name="inventory" size={12} color={Colors.success} />
+                        <Text style={styles.stockBadgeText}>{item.stock} {getUnitShort(item.unitType)}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
                   {item.description ? (
                     <Text style={styles.materialDesc} numberOfLines={2}>{item.description}</Text>
                   ) : null}
@@ -161,7 +254,25 @@ const styles = StyleSheet.create({
   },
   addBtnText: { fontSize: FontSize.sm, color: Colors.textOnPrimary, fontWeight: FontWeight.bold },
   formTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.base },
-  colorLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm },
+  fieldLabel: {
+    fontSize: FontSize.sm, fontWeight: FontWeight.medium,
+    color: Colors.textSecondary, textAlign: 'right',
+    marginBottom: Spacing.sm, marginTop: Spacing.sm,
+  },
+  unitsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm,
+    marginBottom: Spacing.base, justifyContent: 'flex-end',
+  },
+  unitChip: {
+    alignItems: 'center', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.border, minWidth: 60,
+  },
+  unitChipActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
+  unitChipText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
+  unitChipTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
+  unitChipShort: { fontSize: 10, color: Colors.textMuted },
+  unitChipShortActive: { color: Colors.primary },
   colorsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.base, justifyContent: 'flex-end' },
   colorCircle: {
     width: 32, height: 32, borderRadius: 16,
@@ -192,6 +303,30 @@ const styles = StyleSheet.create({
   },
   editBtnSmall: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary + '60' },
   deleteBtnSmall: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '60' },
+  unitPriceRow: {
+    flexDirection: 'row', gap: Spacing.sm, justifyContent: 'flex-end',
+    flexWrap: 'wrap', marginBottom: Spacing.sm,
+  },
+  unitBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.infoSurface, borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm, paddingVertical: 3,
+    borderWidth: 1, borderColor: Colors.info + '40',
+  },
+  unitBadgeText: { fontSize: 11, color: Colors.info, fontWeight: FontWeight.medium },
+  priceBadge: {
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm, paddingVertical: 3,
+    borderWidth: 1, borderColor: Colors.primary + '40',
+  },
+  priceBadgeText: { fontSize: 11, color: Colors.primary, fontWeight: FontWeight.bold },
+  stockBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.successSurface, borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm, paddingVertical: 3,
+    borderWidth: 1, borderColor: Colors.success + '40',
+  },
+  stockBadgeText: { fontSize: 11, color: Colors.success, fontWeight: FontWeight.medium },
   materialDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right', lineHeight: 20 },
   materialNotes: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 4, fontStyle: 'italic' },
 });

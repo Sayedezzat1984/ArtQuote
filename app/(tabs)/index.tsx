@@ -8,12 +8,15 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useApp } from '@/hooks/useApp';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { BackupModal } from '@/components/feature/BackupModal';
+import { QuoteDetailModal } from '@/components/feature/QuoteDetailModal';
+import { Quote } from '@/contexts/AppContext';
 
 export default function HomeScreen() {
   const { artworks, customers, quotes } = useApp();
   const { t, currency, lang, toggleLang } = useLanguage();
   const router = useRouter();
   const [showBackup, setShowBackup] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
 
   const totalRevenue = quotes
     .filter(q => q.status === 'accepted')
@@ -21,7 +24,7 @@ export default function HomeScreen() {
 
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
   const availableArtworks = artworks.filter(a => a.available).length;
-  const recentQuotes = quotes.slice(0, 3);
+  const recentQuotes = quotes.slice(0, 5);
   const recentArtworks = artworks.slice(0, 3);
 
   const stats = [
@@ -120,16 +123,26 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>{t('recentQuotes')}</Text>
             </View>
             {recentQuotes.map(q => (
-              <Pressable key={q.id} onPress={() => router.push('/(tabs)/quotes')} style={styles.recentCard}>
+              <Pressable
+                key={q.id}
+                onPress={() => setSelectedQuote(q)}
+                style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
+              >
                 <View style={styles.recentLeft}>
                   <View style={[styles.statusDot, { backgroundColor: statusColors[q.status] }]} />
                   <Text style={[styles.statusLabel, { color: statusColors[q.status] }]}>{statusLabels[q.status]}</Text>
                 </View>
                 <View style={styles.recentCenter}>
                   <Text style={styles.recentCustomer}>{q.customerName}</Text>
-                  <Text style={styles.recentNum}>{q.quoteNumber}</Text>
+                  <View style={styles.quoteNumRow}>
+                    <MaterialIcons name="visibility" size={11} color={Colors.textMuted} />
+                    <Text style={styles.recentNum}>{q.quoteNumber} · {q.items.length} {lang === 'ar' ? 'منتج' : 'items'}</Text>
+                  </View>
                 </View>
-                <Text style={styles.recentTotal}>{q.total.toLocaleString()} {currency}</Text>
+                <View style={styles.recentRight}>
+                  <Text style={styles.recentTotal}>{q.total.toLocaleString()}</Text>
+                  <Text style={styles.recentCurrency}>{currency}</Text>
+                </View>
               </Pressable>
             ))}
           </>
@@ -151,7 +164,10 @@ export default function HomeScreen() {
                   <Text style={styles.recentCustomer}>{a.title}</Text>
                   <Text style={styles.recentNum}>{a.category} · {a.year}</Text>
                 </View>
-                <Text style={styles.recentTotal}>{a.price.toLocaleString()} {currency}</Text>
+                <View style={styles.recentRight}>
+                  <Text style={styles.recentTotal}>{a.price.toLocaleString()}</Text>
+                  <Text style={styles.recentCurrency}>{currency}</Text>
+                </View>
               </Pressable>
             ))}
           </>
@@ -161,6 +177,15 @@ export default function HomeScreen() {
       </ScrollView>
 
       <BackupModal visible={showBackup} onClose={() => setShowBackup(false)} />
+
+      <QuoteDetailModal
+        visible={selectedQuote !== null}
+        quote={selectedQuote}
+        artworks={artworks}
+        customers={customers}
+        onClose={() => setSelectedQuote(null)}
+        onEdit={() => { setSelectedQuote(null); router.push('/(tabs)/quotes'); }}
+      />
     </SafeAreaView>
   );
 }
@@ -170,71 +195,40 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: Spacing.base },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.xl,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.xl,
   },
   headerRight: { alignItems: 'flex-end' },
   headerLeft: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', marginTop: 4 },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
   },
   langBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.primarySurface,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: Colors.primarySurface, borderWidth: 1, borderColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
   },
   langBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
   greeting: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
   subtitle: { fontSize: FontSize.base, color: Colors.textSecondary, textAlign: 'right' },
   revenueCard: {
-    backgroundColor: Colors.card,
-    borderRadius: Radius.xl,
-    padding: Spacing.xl,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.primary + '40',
-    ...Shadow.gold,
+    backgroundColor: Colors.card, borderRadius: Radius.xl, padding: Spacing.xl,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.primary + '40', ...Shadow.gold,
   },
   revenueLeft: { flex: 1, alignItems: 'flex-end' },
   revenueLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
   revenueAmount: { fontSize: FontSize.xxxl, fontWeight: FontWeight.extrabold, color: Colors.primary },
   pendingText: { fontSize: FontSize.sm, color: Colors.warning, marginTop: Spacing.xs },
   revenueIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.primarySurface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center',
   },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xl },
   statCard: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: Colors.card,
-    borderRadius: Radius.lg,
-    padding: Spacing.base,
-    alignItems: 'flex-end',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadow.sm,
+    flex: 1, minWidth: '45%', backgroundColor: Colors.card, borderRadius: Radius.lg,
+    padding: Spacing.base, alignItems: 'flex-end', borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
   },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   statIcon: {
@@ -248,32 +242,24 @@ const styles = StyleSheet.create({
   seeAll: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.medium },
   quickActions: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
   quickBtn: {
-    flex: 1,
-    backgroundColor: Colors.card,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    alignItems: 'center',
-    gap: Spacing.xs,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md,
+    alignItems: 'center', gap: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
   },
   quickBtnText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium, textAlign: 'center' },
   recentCard: {
-    backgroundColor: Colors.card,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md,
+    flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm,
+    borderWidth: 1, borderColor: Colors.border,
   },
   recentLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 60 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.medium },
   recentCenter: { flex: 1, paddingHorizontal: Spacing.md, alignItems: 'flex-end' },
   recentCustomer: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary, textAlign: 'right' },
+  quoteNumRow: { flexDirection: 'row', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 },
   recentNum: { fontSize: FontSize.xs, color: Colors.textMuted },
-  recentTotal: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
+  recentRight: { alignItems: 'flex-end' },
+  recentTotal: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
+  recentCurrency: { fontSize: FontSize.xs, color: Colors.textMuted },
   availableDot: { width: 10, height: 10, borderRadius: 5 },
 });

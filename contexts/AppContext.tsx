@@ -29,6 +29,9 @@ export interface Material {
   color: string;
   supplier: string;
   notes: string;
+  unitType?: string;
+  unitPrice?: number;
+  stock?: number;
   createdAt: string;
 }
 

@@ -6,6 +6,7 @@ export { EmptyState } from './ui/EmptyState';
 export { ArtworkCard } from './feature/ArtworkCard';
 export { ArtworkDetailModal } from './feature/ArtworkDetailModal';
 export { MaterialsModal } from './feature/MaterialsModal';
+export { QuoteDetailModal } from './feature/QuoteDetailModal';
 export { CustomerCard } from './feature/CustomerCard';
 export { QuoteCard } from './feature/QuoteCard';
 export { ArtworkFormModal } from './feature/ArtworkFormModal';
