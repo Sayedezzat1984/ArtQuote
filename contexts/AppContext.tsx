@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { loadArtworks, saveArtworks, loadCustomers, saveCustomers, loadQuotes, saveQuotes } from '@/services/storage';
+import { loadArtworks, saveArtworks, loadCustomers, saveCustomers, loadQuotes, saveQuotes, loadMaterials, saveMaterials } from '@/services/storage';
 import { mockArtworks, mockCustomers, mockQuotes } from '@/services/mockData';
 
 export interface Artwork {
@@ -9,10 +9,26 @@ export interface Artwork {
   description: string;
   category: string;
   price: number;
+  width: string;
+  height: string;
+  depth: string;
+  dimensionUnit: 'cm' | 'mm';
   dimensions: string;
   year: string;
   available: boolean;
   image: string | null;
+  images: string[];
+  materialIds: string[];
+  createdAt: string;
+}
+
+export interface Material {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  supplier: string;
+  notes: string;
   createdAt: string;
 }
 
@@ -52,6 +68,7 @@ interface AppContextType {
   artworks: Artwork[];
   customers: Customer[];
   quotes: Quote[];
+  materials: Material[];
   loading: boolean;
   addArtwork: (artwork: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
   updateArtwork: (id: string, artwork: Partial<Artwork>) => Promise<void>;
@@ -62,7 +79,10 @@ interface AppContextType {
   addQuote: (quote: Omit<Quote, 'id' | 'quoteNumber' | 'createdAt'>) => Promise<void>;
   updateQuote: (id: string, quote: Partial<Quote>) => Promise<void>;
   deleteQuote: (id: string) => Promise<void>;
-  restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[] }) => Promise<void>;
+  addMaterial: (material: Omit<Material, 'id' | 'createdAt'>) => Promise<void>;
+  updateMaterial: (id: string, material: Partial<Material>) => Promise<void>;
+  deleteMaterial: (id: string) => Promise<void>;
+  restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -71,19 +91,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function init() {
       try {
-        const [storedArtworks, storedCustomers, storedQuotes] = await Promise.all([
+        const [storedArtworks, storedCustomers, storedQuotes, storedMaterials] = await Promise.all([
           loadArtworks(),
           loadCustomers(),
           loadQuotes(),
+          loadMaterials(),
         ]);
         setArtworks(storedArtworks.length > 0 ? storedArtworks : mockArtworks);
         setCustomers(storedCustomers.length > 0 ? storedCustomers : mockCustomers);
         setQuotes(storedQuotes.length > 0 ? storedQuotes : mockQuotes);
+        setMaterials(storedMaterials.length > 0 ? storedMaterials : []);
         if (storedArtworks.length === 0) await saveArtworks(mockArtworks);
         if (storedCustomers.length === 0) await saveCustomers(mockCustomers);
         if (storedQuotes.length === 0) await saveQuotes(mockQuotes);
@@ -158,23 +181,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await saveQuotes(updated);
   }, [quotes]);
 
-  const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[] }) => {
+  const addMaterial = useCallback(async (material: Omit<Material, 'id' | 'createdAt'>) => {
+    const newMaterial: Material = { ...material, id: Date.now().toString(), createdAt: new Date().toISOString() };
+    const updated = [newMaterial, ...materials];
+    setMaterials(updated);
+    await saveMaterials(updated);
+  }, [materials]);
+
+  const updateMaterial = useCallback(async (id: string, material: Partial<Material>) => {
+    const updated = materials.map(m => m.id === id ? { ...m, ...material } : m);
+    setMaterials(updated);
+    await saveMaterials(updated);
+  }, [materials]);
+
+  const deleteMaterial = useCallback(async (id: string) => {
+    const updated = materials.filter(m => m.id !== id);
+    setMaterials(updated);
+    await saveMaterials(updated);
+  }, [materials]);
+
+  const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => {
     setArtworks(data.artworks);
     setCustomers(data.customers);
     setQuotes(data.quotes);
+    if (data.materials) setMaterials(data.materials);
     await Promise.all([
       saveArtworks(data.artworks),
       saveCustomers(data.customers),
       saveQuotes(data.quotes),
+      saveMaterials(data.materials || []),
     ]);
   }, []);
 
   return (
     <AppContext.Provider value={{
-      artworks, customers, quotes, loading,
+      artworks, customers, quotes, materials, loading,
       addArtwork, updateArtwork, deleteArtwork,
       addCustomer, updateCustomer, deleteCustomer,
-      addQuote, updateQuote, deleteQuote, restoreBackup,
+      addQuote, updateQuote, deleteQuote,
+      addMaterial, updateMaterial, deleteMaterial,
+      restoreBackup,
     }}>
       {children}
     </AppContext.Provider>

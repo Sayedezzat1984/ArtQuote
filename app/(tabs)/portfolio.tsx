@@ -8,17 +8,21 @@ import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ArtworkCard, ArtworkFormModal, EmptyState } from '@/components';
+import { ArtworkDetailModal } from '@/components/feature/ArtworkDetailModal';
+import { MaterialsModal } from '@/components/feature/MaterialsModal';
 import { Artwork } from '@/contexts/AppContext';
 
-const CATEGORIES_AR = ['الكل', 'زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي', 'ديجيتال آرت', 'نحت', 'أخرى'];
-const CATEGORIES_EN = ['All', 'Oil on Canvas', 'Watercolor', 'Acrylic', 'Pencil', 'Arabic Calligraphy', 'Digital Art', 'Sculpture', 'Other'];
+const CATEGORIES_AR = ['الكل', 'زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي', 'ديجيتال آرت', 'أقسام', 'وحدات إضاءة', 'نحت حر', 'كونسول', 'جداريات', 'مجسمات', 'أخرى'];
+const CATEGORIES_EN = ['All', 'Oil on Canvas', 'Watercolor', 'Acrylic', 'Pencil', 'Arabic Calligraphy', 'Digital Art', 'Sections', 'Lighting Units', 'Free Sculpture', 'Console', 'Murals', 'Sculptures', 'Other'];
 
 export default function PortfolioScreen() {
-  const { artworks, addArtwork, updateArtwork, deleteArtwork } = useApp();
+  const { artworks, materials, addArtwork, updateArtwork, deleteArtwork } = useApp();
   const { showAlert } = useAlert();
   const { t, lang } = useLanguage();
   const [showForm, setShowForm] = useState(false);
+  const [showMaterials, setShowMaterials] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
+  const [detailArtwork, setDetailArtwork] = useState<Artwork | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState(0);
   const [filter, setFilter] = useState(0);
@@ -33,12 +37,12 @@ export default function PortfolioScreen() {
     return matchSearch && matchCat && matchFilter;
   });
 
-  function handleEdit(artwork: Artwork) { setEditingArtwork(artwork); setShowForm(true); }
+  function handleEdit(artwork: Artwork) { setDetailArtwork(null); setEditingArtwork(artwork); setShowForm(true); }
 
   function handleDelete(artwork: Artwork) {
     showAlert(`${t('delete')}`, `هل أنت متأكد من حذف "${artwork.title}"؟`, [
       { text: t('cancel'), style: 'cancel' },
-      { text: t('delete'), style: 'destructive', onPress: () => deleteArtwork(artwork.id) },
+      { text: t('delete'), style: 'destructive', onPress: () => { deleteArtwork(artwork.id); setDetailArtwork(null); } },
     ]);
   }
 
@@ -52,9 +56,15 @@ export default function PortfolioScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditingArtwork(null); setShowForm(true); }} style={styles.addBtn}>
-          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable onPress={() => { setEditingArtwork(null); setShowForm(true); }} style={styles.addBtn}>
+            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+          </Pressable>
+          <Pressable onPress={() => setShowMaterials(true)} style={styles.materialsBtn}>
+            <MaterialIcons name="layers" size={18} color={Colors.primary} />
+            <Text style={styles.materialsBtnText}>الخامات ({materials.length})</Text>
+          </Pressable>
+        </View>
         <Text style={styles.title}>{t('artworkAlbum')}</Text>
       </View>
 
@@ -111,7 +121,8 @@ export default function PortfolioScreen() {
         renderItem={({ item }) => (
           <ArtworkCard
             artwork={item}
-            onPress={() => {}}
+            materials={materials}
+            onPress={() => setDetailArtwork(item)}
             onEdit={() => handleEdit(item)}
             onDelete={() => handleDelete(item)}
           />
@@ -121,9 +132,21 @@ export default function PortfolioScreen() {
       <ArtworkFormModal
         visible={showForm}
         artwork={editingArtwork}
+        materials={materials}
         onSave={handleSave}
         onClose={() => { setShowForm(false); setEditingArtwork(null); }}
       />
+
+      <ArtworkDetailModal
+        visible={detailArtwork !== null}
+        artwork={detailArtwork}
+        materials={materials}
+        onClose={() => setDetailArtwork(null)}
+        onEdit={() => handleEdit(detailArtwork!)}
+        onDelete={() => handleDelete(detailArtwork!)}
+      />
+
+      <MaterialsModal visible={showMaterials} onClose={() => setShowMaterials(false)} />
     </SafeAreaView>
   );
 }
@@ -136,10 +159,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  headerRight: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
   addBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
+  materialsBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.primary + '60',
+  },
+  materialsBtnText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
