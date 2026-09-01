@@ -5,6 +5,7 @@ export { Badge } from './ui/Badge';
 export { EmptyState } from './ui/EmptyState';
 export { ArtworkCard } from './feature/ArtworkCard';
 export { ArtworkDetailModal } from './feature/ArtworkDetailModal';
+export { ImageViewerModal } from './feature/ImageViewerModal';
 export { MaterialsModal } from './feature/MaterialsModal';
 export { QuoteDetailModal } from './feature/QuoteDetailModal';
 export { CustomerCard } from './feature/CustomerCard';

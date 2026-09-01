@@ -1,12 +1,13 @@
 // Powered by OnSpace.AI
 import React, { useState } from 'react';
-import { View, Text, Modal, ScrollView, StyleSheet, Pressable, Dimensions, FlatList } from 'react-native';
+import { View, Text, Modal, ScrollView, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { Badge } from '@/components/ui/Badge';
 import { Artwork, Material } from '@/contexts/AppContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ImageViewerModal } from './ImageViewerModal';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -22,6 +23,7 @@ interface ArtworkDetailModalProps {
 export function ArtworkDetailModal({ visible, artwork, materials, onClose, onEdit, onDelete }: ArtworkDetailModalProps) {
   const { currency } = useLanguage();
   const [activeImg, setActiveImg] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   if (!artwork) return null;
 
@@ -52,29 +54,48 @@ export function ArtworkDetailModal({ visible, artwork, materials, onClose, onEdi
             {/* Gallery */}
             {allImages.length > 0 ? (
               <View style={styles.galleryContainer}>
-                <Image
-                  source={{ uri: allImages[activeImg] }}
-                  style={styles.mainImage}
-                  contentFit="cover"
-                  transition={200}
-                />
+                {/* Main image — tap to open full screen viewer */}
+                <Pressable onPress={() => setViewerOpen(true)} activeOpacity={0.92}>
+                  <Image
+                    source={{ uri: allImages[activeImg] }}
+                    style={styles.mainImage}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                  {/* Full-screen hint */}
+                  <View style={styles.fullscreenHint}>
+                    <MaterialIcons name="fullscreen" size={14} color="#fff" />
+                    <Text style={styles.fullscreenHintText}>الشاشة الكاملة</Text>
+                  </View>
+                </Pressable>
+
                 <View style={styles.galleryOverlay}>
                   <Badge label={artwork.available ? 'متاح للبيع' : 'مباع'} variant={artwork.available ? 'success' : 'error'} />
                 </View>
-                {allImages.length > 1 && (
+
+                {allImages.length > 1 ? (
                   <>
                     <View style={styles.imgCounter}>
                       <Text style={styles.imgCounterText}>{activeImg + 1}/{allImages.length}</Text>
                     </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbsScroll} contentContainerStyle={styles.thumbsContent}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.thumbsScroll}
+                      contentContainerStyle={styles.thumbsContent}
+                    >
                       {allImages.map((uri, i) => (
-                        <Pressable key={i} onPress={() => setActiveImg(i)} style={[styles.thumbBtn, i === activeImg && styles.thumbBtnActive]}>
+                        <Pressable
+                          key={i}
+                          onPress={() => setActiveImg(i)}
+                          style={[styles.thumbBtn, i === activeImg && styles.thumbBtnActive]}
+                        >
                           <Image source={{ uri }} style={styles.thumb} contentFit="cover" />
                         </Pressable>
                       ))}
                     </ScrollView>
                   </>
-                )}
+                ) : null}
               </View>
             ) : (
               <View style={styles.noImagePlaceholder}>
@@ -153,6 +174,14 @@ export function ArtworkDetailModal({ visible, artwork, materials, onClose, onEdi
           </ScrollView>
         </View>
       </View>
+
+      {/* Full-screen viewer with zoom, crop, rotate */}
+      <ImageViewerModal
+        visible={viewerOpen}
+        images={allImages}
+        initialIndex={activeImg}
+        onClose={() => setViewerOpen(false)}
+      />
     </Modal>
   );
 }
@@ -186,6 +215,13 @@ const styles = StyleSheet.create({
   },
   galleryContainer: { position: 'relative' },
   mainImage: { width: '100%', height: 280 },
+  fullscreenHint: {
+    position: 'absolute', bottom: Spacing.sm, left: Spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm, paddingVertical: 4,
+  },
+  fullscreenHintText: { fontSize: FontSize.xs, color: '#fff', fontWeight: FontWeight.medium },
   galleryOverlay: { position: 'absolute', top: Spacing.md, right: Spacing.md },
   imgCounter: {
     position: 'absolute', top: Spacing.md, left: Spacing.md,
