@@ -8,10 +8,11 @@ import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ArtworkCard, ArtworkFormModal, EmptyState } from '@/components';
+import { ArtworkDetailModal } from '@/components/feature/ArtworkDetailModal';
 import { Artwork } from '@/contexts/AppContext';
 
-const CATEGORIES_AR = ['الكل', 'زيت على قماش', 'ألوان مائية', 'أكريليك', 'رسم بالقلم', 'خط عربي', 'ديجيتال آرت', 'نحت', 'أخرى'];
-const CATEGORIES_EN = ['All', 'Oil on Canvas', 'Watercolor', 'Acrylic', 'Pencil', 'Arabic Calligraphy', 'Digital Art', 'Sculpture', 'Other'];
+const CATEGORIES_AR = ['الكل', 'أقسام', 'وحدات إضاءة', 'نحت حر', 'كونسول', 'جداريات', 'مجسمات', 'أخرى'];
+const CATEGORIES_EN = ['All', 'Sections', 'Lighting Units', 'Free Sculpture', 'Console', 'Murals', 'Figurines', 'Other'];
 
 export default function PortfolioScreen() {
   const { artworks, addArtwork, updateArtwork, deleteArtwork } = useApp();
@@ -19,6 +20,7 @@ export default function PortfolioScreen() {
   const { t, lang } = useLanguage();
   const [showForm, setShowForm] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
+  const [detailArtwork, setDetailArtwork] = useState<Artwork | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState(0);
   const [filter, setFilter] = useState(0);
@@ -111,7 +113,7 @@ export default function PortfolioScreen() {
         renderItem={({ item }) => (
           <ArtworkCard
             artwork={item}
-            onPress={() => {}}
+            onPress={() => setDetailArtwork(item)}
             onEdit={() => handleEdit(item)}
             onDelete={() => handleDelete(item)}
           />
@@ -123,6 +125,13 @@ export default function PortfolioScreen() {
         artwork={editingArtwork}
         onSave={handleSave}
         onClose={() => { setShowForm(false); setEditingArtwork(null); }}
+      />
+
+      <ArtworkDetailModal
+        visible={detailArtwork !== null}
+        artwork={detailArtwork}
+        onClose={() => setDetailArtwork(null)}
+        onEdit={() => { if (detailArtwork) { setDetailArtwork(null); handleEdit(detailArtwork); } }}
       />
     </SafeAreaView>
   );
