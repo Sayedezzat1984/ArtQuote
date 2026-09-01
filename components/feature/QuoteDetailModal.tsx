@@ -89,7 +89,7 @@ export function QuoteDetailModal({ visible, quote, artworks, customers, onClose,
 
   async function handlePDF() {
     setLoadingPDF(true);
-    await exportQuoteAsPDF(quote, lang, currency);
+    await exportQuoteAsPDF(quote, lang, currency, artworks, customer);
     setLoadingPDF(false);
   }
 
