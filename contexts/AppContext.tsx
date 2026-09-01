@@ -2,14 +2,6 @@
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { loadArtworks, saveArtworks, loadCustomers, saveCustomers, loadQuotes, saveQuotes } from '@/services/storage';
 import { mockArtworks, mockCustomers, mockQuotes } from '@/services/mockData';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-export interface ArtworkDimensions {
-  length: string;
-  width: string;
-  height: string;
-  unit: 'cm' | 'mm';
-}
 
 export interface Artwork {
   id: string;
@@ -17,19 +9,10 @@ export interface Artwork {
   description: string;
   category: string;
   price: number;
-  dimensions: ArtworkDimensions;
+  dimensions: string;
   year: string;
   available: boolean;
   image: string | null;
-  images: string[];
-  materials: string[];
-  createdAt: string;
-}
-
-export interface Material {
-  id: string;
-  name: string;
-  description: string;
   createdAt: string;
 }
 
@@ -65,26 +48,10 @@ export interface Quote {
   validUntil: string;
 }
 
-const MATERIALS_KEY = 'sayed_ezzat_materials';
-
-const defaultMaterials: Material[] = [
-  { id: '1', name: 'الجرانيت', description: 'حجر طبيعي صلب عالي الجودة', createdAt: new Date().toISOString() },
-  { id: '2', name: 'الرخام', description: 'حجر كلسي متحول أبيض أو ملون', createdAt: new Date().toISOString() },
-  { id: '3', name: 'الحجر الجيري', description: 'حجر رسوبي سهل النحت', createdAt: new Date().toISOString() },
-  { id: '4', name: 'البرونز', description: 'سبيكة نحاس وقصدير مناسبة للمجسمات', createdAt: new Date().toISOString() },
-  { id: '5', name: 'الفولاذ المقاوم للصدأ', description: 'معدن مقاوم للعوامل الجوية', createdAt: new Date().toISOString() },
-  { id: '6', name: 'الألومنيوم', description: 'معدن خفيف الوزن متعدد الاستخدام', createdAt: new Date().toISOString() },
-  { id: '7', name: 'الخشب', description: 'خشب طبيعي للنحت والتشكيل', createdAt: new Date().toISOString() },
-  { id: '8', name: 'الجبس', description: 'مادة بيضاء سهلة التشكيل', createdAt: new Date().toISOString() },
-  { id: '9', name: 'الفايبرجلاس', description: 'مادة خفيفة ومقاومة ومتعددة الألوان', createdAt: new Date().toISOString() },
-  { id: '10', name: 'الطين الحراري', description: 'طين مناسب للتشكيل والحرق', createdAt: new Date().toISOString() },
-];
-
 interface AppContextType {
   artworks: Artwork[];
   customers: Customer[];
   quotes: Quote[];
-  materials: Material[];
   loading: boolean;
   addArtwork: (artwork: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
   updateArtwork: (id: string, artwork: Partial<Artwork>) => Promise<void>;
@@ -95,9 +62,6 @@ interface AppContextType {
   addQuote: (quote: Omit<Quote, 'id' | 'quoteNumber' | 'createdAt'>) => Promise<void>;
   updateQuote: (id: string, quote: Partial<Quote>) => Promise<void>;
   deleteQuote: (id: string) => Promise<void>;
-  addMaterial: (material: Omit<Material, 'id' | 'createdAt'>) => Promise<void>;
-  updateMaterial: (id: string, material: Partial<Material>) => Promise<void>;
-  deleteMaterial: (id: string) => Promise<void>;
   restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[] }) => Promise<void>;
 }
 
@@ -107,36 +71,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function init() {
       try {
-        const [storedArtworks, storedCustomers, storedQuotes, storedMatsRaw] = await Promise.all([
+        const [storedArtworks, storedCustomers, storedQuotes] = await Promise.all([
           loadArtworks(),
           loadCustomers(),
           loadQuotes(),
-          AsyncStorage.getItem(MATERIALS_KEY),
         ]);
-
-        // Migrate old artworks that have string dimensions
-        const migratedArtworks = (storedArtworks.length > 0 ? storedArtworks : mockArtworks).map((a: any) => {
-          if (typeof a.dimensions === 'string') {
-            return { ...a, dimensions: { length: '', width: '', height: '', unit: 'cm' as const }, images: a.images || [], materials: a.materials || [] };
-          }
-          return { ...a, images: a.images || [], materials: a.materials || [] };
-        });
-
-        setArtworks(migratedArtworks);
+        setArtworks(storedArtworks.length > 0 ? storedArtworks : mockArtworks);
         setCustomers(storedCustomers.length > 0 ? storedCustomers : mockCustomers);
         setQuotes(storedQuotes.length > 0 ? storedQuotes : mockQuotes);
-
-        const storedMats: Material[] = storedMatsRaw ? JSON.parse(storedMatsRaw) : [];
-        setMaterials(storedMats.length > 0 ? storedMats : defaultMaterials);
-        if (storedMats.length === 0) await AsyncStorage.setItem(MATERIALS_KEY, JSON.stringify(defaultMaterials));
-
-        if (storedArtworks.length === 0) await saveArtworks(migratedArtworks);
+        if (storedArtworks.length === 0) await saveArtworks(mockArtworks);
         if (storedCustomers.length === 0) await saveCustomers(mockCustomers);
         if (storedQuotes.length === 0) await saveQuotes(mockQuotes);
       } finally {
@@ -210,25 +158,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await saveQuotes(updated);
   }, [quotes]);
 
-  const addMaterial = useCallback(async (material: Omit<Material, 'id' | 'createdAt'>) => {
-    const newMat: Material = { ...material, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [...materials, newMat];
-    setMaterials(updated);
-    await AsyncStorage.setItem(MATERIALS_KEY, JSON.stringify(updated));
-  }, [materials]);
-
-  const updateMaterial = useCallback(async (id: string, material: Partial<Material>) => {
-    const updated = materials.map(m => m.id === id ? { ...m, ...material } : m);
-    setMaterials(updated);
-    await AsyncStorage.setItem(MATERIALS_KEY, JSON.stringify(updated));
-  }, [materials]);
-
-  const deleteMaterial = useCallback(async (id: string) => {
-    const updated = materials.filter(m => m.id !== id);
-    setMaterials(updated);
-    await AsyncStorage.setItem(MATERIALS_KEY, JSON.stringify(updated));
-  }, [materials]);
-
   const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[] }) => {
     setArtworks(data.artworks);
     setCustomers(data.customers);
@@ -242,12 +171,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      artworks, customers, quotes, materials, loading,
+      artworks, customers, quotes, loading,
       addArtwork, updateArtwork, deleteArtwork,
       addCustomer, updateCustomer, deleteCustomer,
-      addQuote, updateQuote, deleteQuote,
-      addMaterial, updateMaterial, deleteMaterial,
-      restoreBackup,
+      addQuote, updateQuote, deleteQuote, restoreBackup,
     }}>
       {children}
     </AppContext.Provider>

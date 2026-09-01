@@ -4,7 +4,6 @@ export { Input } from './ui/Input';
 export { Badge } from './ui/Badge';
 export { EmptyState } from './ui/EmptyState';
 export { ArtworkCard } from './feature/ArtworkCard';
-export { ArtworkDetailModal } from './feature/ArtworkDetailModal';
 export { CustomerCard } from './feature/CustomerCard';
 export { QuoteCard } from './feature/QuoteCard';
 export { ArtworkFormModal } from './feature/ArtworkFormModal';
