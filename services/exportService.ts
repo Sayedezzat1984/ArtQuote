@@ -4,6 +4,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as DocumentPicker from 'expo-document-picker';
+import { captureRef } from 'react-native-view-shot';
 import { Alert } from 'react-native';
 import { Quote, Artwork, Customer } from '@/contexts/AppContext';
 
@@ -144,7 +145,6 @@ export async function exportQuoteAsPDF(quote: Quote, lang: 'ar' | 'en', currency
 
 export async function exportQuoteAsJPG(ref: any, quote: Quote): Promise<void> {
   try {
-    const { captureRef } = await import('react-native-view-shot');
     const uri = await captureRef(ref, { format: 'jpg', quality: 0.95 });
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status === 'granted') {
