@@ -1,6 +1,9 @@
 // Powered by OnSpace.AI
-import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, ScrollView, StyleSheet, Pressable, Switch, Alert, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, Modal, ScrollView, StyleSheet, Pressable,
+  Switch, Alert, TextInput, PanResponder, Animated,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -20,6 +23,79 @@ interface ArtworkFormModalProps {
   onAddCategory?: (name: string) => Promise<void>;
   onDeleteCategory?: (id: string) => Promise<void>;
 }
+
+// Draggable image thumbnail component
+function DraggableImage({
+  uri,
+  index,
+  isMain,
+  onRemove,
+  onMoveLeft,
+  onMoveRight,
+  isFirst,
+  isLast,
+}: {
+  uri: string;
+  index: number;
+  isMain: boolean;
+  onRemove: () => void;
+  onMoveLeft: () => void;
+  onMoveRight: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  return (
+    <View style={imgStyles.wrap}>
+      <Image source={{ uri }} style={imgStyles.img} contentFit="cover" />
+      {isMain && (
+        <View style={imgStyles.mainBadge}>
+          <Text style={imgStyles.mainBadgeText}>رئيسية</Text>
+        </View>
+      )}
+      {/* Reorder arrows */}
+      <View style={imgStyles.reorderRow}>
+        {!isFirst ? (
+          <Pressable onPress={onMoveLeft} style={imgStyles.arrowBtn} hitSlop={4}>
+            <MaterialIcons name="chevron-right" size={14} color="#fff" />
+          </Pressable>
+        ) : <View style={imgStyles.arrowPlaceholder} />}
+        {!isLast ? (
+          <Pressable onPress={onMoveRight} style={imgStyles.arrowBtn} hitSlop={4}>
+            <MaterialIcons name="chevron-left" size={14} color="#fff" />
+          </Pressable>
+        ) : <View style={imgStyles.arrowPlaceholder} />}
+      </View>
+      <Pressable onPress={onRemove} style={imgStyles.removeBtn}>
+        <MaterialIcons name="close" size={14} color="#fff" />
+      </Pressable>
+    </View>
+  );
+}
+
+const imgStyles = StyleSheet.create({
+  wrap: { width: 90, height: 90, borderRadius: Radius.md, overflow: 'hidden', position: 'relative' },
+  img: { width: '100%', height: '100%' },
+  mainBadge: {
+    position: 'absolute', bottom: 20, left: 0, right: 0,
+    backgroundColor: Colors.primary + 'DD', paddingVertical: 2, alignItems: 'center',
+  },
+  mainBadgeText: { fontSize: 9, color: '#0d0d0f', fontWeight: FontWeight.bold },
+  reorderRow: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 2, paddingVertical: 2,
+  },
+  arrowBtn: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
+  },
+  arrowPlaceholder: { width: 22 },
+  removeBtn: {
+    position: 'absolute', top: 4, right: 4,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center',
+  },
+});
 
 export function ArtworkFormModal({ visible, artwork, materials, artworkCategories, onSave, onClose, onAddCategory, onDeleteCategory }: ArtworkFormModalProps) {
   const [title, setTitle] = useState('');
@@ -88,6 +164,24 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
     setImages(prev => prev.filter((_, i) => i !== idx));
   }
 
+  function moveImageLeft(idx: number) {
+    if (idx === 0) return;
+    setImages(prev => {
+      const arr = [...prev];
+      [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+      return arr;
+    });
+  }
+
+  function moveImageRight(idx: number) {
+    setImages(prev => {
+      if (idx >= prev.length - 1) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+      return arr;
+    });
+  }
+
   function toggleMaterial(id: string) {
     setSelectedMaterials(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
@@ -138,7 +232,10 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
 
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Images Section */}
-            <Text style={styles.sectionLabel}>الصور ({images.length}/10)</Text>
+            <View style={styles.imgSectionHeader}>
+              <Text style={styles.imgHint}>اضغط السهم لتغيير الترتيب · الأولى رئيسية</Text>
+              <Text style={styles.sectionLabel}>الصور ({images.length}/10)</Text>
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
               <View style={styles.imagesRow}>
                 <Pressable onPress={pickImages} style={styles.addImageBtn}>
@@ -150,13 +247,17 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
                   <Text style={[styles.addImageText, { color: Colors.info }]}>كاميرا</Text>
                 </Pressable>
                 {images.map((uri, i) => (
-                  <View key={i} style={styles.imageThumb}>
-                    <Image source={{ uri }} style={styles.thumbImg} contentFit="cover" />
-                    {i === 0 && <View style={styles.mainBadge}><Text style={styles.mainBadgeText}>رئيسية</Text></View>}
-                    <Pressable onPress={() => removeImage(i)} style={styles.removeImgBtn}>
-                      <MaterialIcons name="close" size={14} color="#fff" />
-                    </Pressable>
-                  </View>
+                  <DraggableImage
+                    key={`${uri}-${i}`}
+                    uri={uri}
+                    index={i}
+                    isMain={i === 0}
+                    isFirst={i === 0}
+                    isLast={i === images.length - 1}
+                    onRemove={() => removeImage(i)}
+                    onMoveLeft={() => moveImageLeft(i)}
+                    onMoveRight={() => moveImageRight(i)}
+                  />
                 ))}
               </View>
             </ScrollView>
@@ -173,7 +274,6 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
               <Text style={styles.sectionLabel}>نوع العمل</Text>
             </View>
 
-            {/* Category manager */}
             {showCatManager ? (
               <View style={styles.catManager}>
                 <View style={styles.addCatRow}>
@@ -206,7 +306,6 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
               </View>
             ) : null}
 
-            {/* Category selector */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
               <View style={styles.catRow}>
                 {artworkCategories.map(cat => (
@@ -285,6 +384,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   backBtnText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
+  imgSectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xs,
+  },
+  imgHint: { fontSize: 10, color: Colors.textMuted, fontStyle: 'italic' },
   sectionLabel: {
     fontSize: FontSize.sm, fontWeight: FontWeight.medium,
     color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm,
@@ -298,19 +401,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', gap: 4,
   },
   addImageText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center' },
-  imageThumb: { width: 90, height: 90, borderRadius: Radius.md, overflow: 'hidden', position: 'relative' },
-  thumbImg: { width: '100%', height: '100%' },
-  mainBadge: {
-    position: 'absolute', bottom: 4, left: 4,
-    backgroundColor: Colors.primary + 'CC', borderRadius: Radius.xs,
-    paddingHorizontal: 4, paddingVertical: 2,
-  },
-  mainBadgeText: { fontSize: 9, color: Colors.textOnPrimary, fontWeight: FontWeight.bold },
-  removeImgBtn: {
-    position: 'absolute', top: 4, right: 4,
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center',
-  },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   manageCatBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

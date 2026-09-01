@@ -18,9 +18,10 @@ interface ArtworkDetailModalProps {
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onSaveImages?: (newImages: string[]) => void;
 }
 
-export function ArtworkDetailModal({ visible, artwork, materials, onClose, onEdit, onDelete }: ArtworkDetailModalProps) {
+export function ArtworkDetailModal({ visible, artwork, materials, onClose, onEdit, onDelete, onSaveImages }: ArtworkDetailModalProps) {
   const { currency } = useLanguage();
   const [activeImg, setActiveImg] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -181,6 +182,8 @@ export function ArtworkDetailModal({ visible, artwork, materials, onClose, onEdi
         images={allImages}
         initialIndex={activeImg}
         onClose={() => setViewerOpen(false)}
+        onSaveToArtwork={onSaveImages}
+        onImagesChanged={(newImgs) => { onSaveImages?.(newImgs); }}
       />
     </Modal>
   );

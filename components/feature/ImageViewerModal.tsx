@@ -19,17 +19,31 @@ interface ImageViewerModalProps {
   initialIndex?: number;
   onClose: () => void;
   onImagesChanged?: (newImages: string[]) => void;
+  onSaveToArtwork?: (newImages: string[]) => void;
 }
 
 type EditMode = null | 'crop' | 'rotate';
 
-export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, onImagesChanged }: ImageViewerModalProps) {
+export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, onImagesChanged, onSaveToArtwork }: ImageViewerModalProps) {
   const [activeIdx, setActiveIdx] = useState(initialIndex);
   const [editMode, setEditMode] = useState<EditMode>(null);
   const [saving, setSaving] = useState(false);
+  const [savingToArtwork, setSavingToArtwork] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [localImages, setLocalImages] = useState<string[]>(images);
   const [cropBox, setCropBox] = useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
   const [dragging, setDragging] = useState<'tl' | 'tr' | 'bl' | 'br' | 'move' | null>(null);
   const dragStart = useRef({ x: 0, y: 0, box: cropBox });
+
+  // Sync localImages when images prop changes
+  React.useEffect(() => {
+    setLocalImages(images);
+    setHasUnsavedChanges(false);
+  }, [images, visible]);
+
+  React.useEffect(() => {
+    if (visible) setActiveIdx(initialIndex);
+  }, [visible, initialIndex]);
 
   // Zoom & pan state
   const scale = useRef(new Animated.Value(1)).current;
@@ -59,7 +73,6 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
     onPanResponderGrant: (e) => {
       const now = Date.now();
       if (now - lastTap.current < 300) {
-        // Double tap — toggle zoom
         if (lastScale.current > 1.05) {
           resetTransform();
         } else {
@@ -99,8 +112,7 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
         lastTX.current += gs.dx;
         lastTY.current += gs.dy;
       } else {
-        // Swipe to change image
-        if (gs.dx < -60 && activeIdx < images.length - 1) {
+        if (gs.dx < -60 && activeIdx < localImages.length - 1) {
           setActiveIdx(i => i + 1);
           resetTransform();
         } else if (gs.dx > 60 && activeIdx > 0) {
@@ -145,7 +157,6 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
         }
       }
       if (!hit) {
-        // Check if inside box = move
         if (locationX > px.left && locationX < px.left + px.w &&
             locationY > px.top && locationY < px.top + px.h) {
           hit = 'move';
@@ -188,11 +199,11 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
   });
 
   async function applyCrop() {
-    if (!images[activeIdx]) return;
+    if (!localImages[activeIdx]) return;
     setSaving(true);
     try {
       const result = await ImageManipulator.manipulateAsync(
-        images[activeIdx],
+        localImages[activeIdx],
         [{
           crop: {
             originX: Math.round(cropBox.x * 1000),
@@ -203,8 +214,10 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
         }],
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
-      const newImages = [...images];
+      const newImages = [...localImages];
       newImages[activeIdx] = result.uri;
+      setLocalImages(newImages);
+      setHasUnsavedChanges(true);
       onImagesChanged?.(newImages);
       setEditMode(null);
       setCropBox({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
@@ -216,16 +229,18 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
   }
 
   async function applyRotate(degrees: number) {
-    if (!images[activeIdx]) return;
+    if (!localImages[activeIdx]) return;
     setSaving(true);
     try {
       const result = await ImageManipulator.manipulateAsync(
-        images[activeIdx],
+        localImages[activeIdx],
         [{ rotate: degrees }],
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
-      const newImages = [...images];
+      const newImages = [...localImages];
       newImages[activeIdx] = result.uri;
+      setLocalImages(newImages);
+      setHasUnsavedChanges(true);
       onImagesChanged?.(newImages);
     } catch {
       Alert.alert('خطأ', 'فشل في تدوير الصورة');
@@ -235,16 +250,18 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
   }
 
   async function applyFlip(axis: 'horizontal' | 'vertical') {
-    if (!images[activeIdx]) return;
+    if (!localImages[activeIdx]) return;
     setSaving(true);
     try {
       const result = await ImageManipulator.manipulateAsync(
-        images[activeIdx],
+        localImages[activeIdx],
         [{ flip: axis === 'horizontal' ? ImageManipulator.FlipType.Horizontal : ImageManipulator.FlipType.Vertical }],
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
-      const newImages = [...images];
+      const newImages = [...localImages];
       newImages[activeIdx] = result.uri;
+      setLocalImages(newImages);
+      setHasUnsavedChanges(true);
       onImagesChanged?.(newImages);
     } catch {
       Alert.alert('خطأ', 'فشل في قلب الصورة');
@@ -253,12 +270,25 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
     }
   }
 
+  async function handleSaveToArtwork() {
+    setSavingToArtwork(true);
+    try {
+      onSaveToArtwork?.(localImages);
+      setHasUnsavedChanges(false);
+      Alert.alert('تم الحفظ', 'تم حفظ التعديلات في بيانات العمل الفني');
+    } catch {
+      Alert.alert('خطأ', 'فشل في حفظ التعديلات');
+    } finally {
+      setSavingToArtwork(false);
+    }
+  }
+
   async function saveToGallery() {
     setSaving(true);
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') { Alert.alert('تنبيه', 'نحتاج إذن الوصول للصور'); return; }
-      await MediaLibrary.saveToLibraryAsync(images[activeIdx]);
+      await MediaLibrary.saveToLibraryAsync(localImages[activeIdx]);
       Alert.alert('تم', 'تم حفظ الصورة في الاستوديو');
     } catch {
       Alert.alert('خطأ', 'فشل في حفظ الصورة');
@@ -269,12 +299,12 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
 
   async function shareImage() {
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(images[activeIdx]);
+      await Sharing.shareAsync(localImages[activeIdx]);
     }
   }
 
   const px = toPx(cropBox);
-  const currentImg = images[activeIdx];
+  const currentImg = localImages[activeIdx];
 
   return (
     <Modal visible={visible} transparent={false} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
@@ -309,8 +339,8 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
           </View>
 
           <View style={styles.topLeft}>
-            {images.length > 1 ? (
-              <Text style={styles.counterText}>{activeIdx + 1} / {images.length}</Text>
+            {localImages.length > 1 ? (
+              <Text style={styles.counterText}>{activeIdx + 1} / {localImages.length}</Text>
             ) : null}
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <MaterialIcons name="arrow-back" size={22} color="#fff" />
@@ -318,27 +348,36 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
           </View>
         </View>
 
+        {/* Save to Artwork Banner */}
+        {hasUnsavedChanges && onSaveToArtwork ? (
+          <Pressable
+            onPress={handleSaveToArtwork}
+            disabled={savingToArtwork}
+            style={styles.saveBanner}
+          >
+            {savingToArtwork
+              ? <ActivityIndicator size="small" color="#0d0d0f" />
+              : <MaterialIcons name="save" size={18} color="#0d0d0f" />
+            }
+            <Text style={styles.saveBannerText}>حفظ التعديلات في العمل الفني</Text>
+            <MaterialIcons name="check-circle" size={16} color="#0d0d0f" />
+          </Pressable>
+        ) : null}
+
         {/* Main Image Area */}
         <View style={styles.imageArea}>
           {editMode === 'crop' ? (
-            // Crop mode — static image with crop overlay
             <View style={[styles.cropContainer, { width: IMG_W, height: IMG_H }]} {...cropPanResponder.panHandlers}>
               <Image source={{ uri: currentImg }} style={{ width: IMG_W, height: IMG_H }} contentFit="contain" />
-
-              {/* Dark overlay outside crop */}
               <View style={[styles.cropOverlay, { top: 0, left: 0, right: 0, height: px.top }]} />
               <View style={[styles.cropOverlay, { top: px.top + px.h, left: 0, right: 0, bottom: 0 }]} />
               <View style={[styles.cropOverlay, { top: px.top, left: 0, width: px.left, height: px.h }]} />
               <View style={[styles.cropOverlay, { top: px.top, left: px.left + px.w, right: 0, height: px.h }]} />
-
-              {/* Crop box border */}
               <View style={[styles.cropBox, { left: px.left, top: px.top, width: px.w, height: px.h }]}>
-                {/* Grid lines */}
                 <View style={[styles.gridLine, styles.gridH, { top: px.h / 3 }]} />
                 <View style={[styles.gridLine, styles.gridH, { top: (px.h * 2) / 3 }]} />
                 <View style={[styles.gridLine, styles.gridV, { left: px.w / 3 }]} />
                 <View style={[styles.gridLine, styles.gridV, { left: (px.w * 2) / 3 }]} />
-                {/* Handles */}
                 <View style={[styles.handle, styles.handleTL]} />
                 <View style={[styles.handle, styles.handleTR]} />
                 <View style={[styles.handle, styles.handleBL]} />
@@ -347,7 +386,6 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
               <Text style={styles.cropHint}>اسحب الزوايا أو المنطقة للتعديل</Text>
             </View>
           ) : (
-            // Normal view with zoom/pan
             <Animated.View
               style={[styles.imageWrap, { transform: [{ scale }, { translateX }, { translateY }] }]}
               {...panResponder.panHandlers}
@@ -362,7 +400,7 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
           )}
         </View>
 
-        {/* Rotate & Flip toolbar (visible only in rotate mode or always) */}
+        {/* Rotate toolbar */}
         {editMode === 'rotate' ? (
           <View style={styles.rotateBar}>
             <Pressable onPress={() => { setEditMode(null); }} style={styles.rotBarBtn}>
@@ -392,10 +430,9 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
         {/* Bottom Toolbar */}
         {!editMode ? (
           <View style={styles.bottomBar}>
-            {/* Thumbnails row if multiple */}
-            {images.length > 1 ? (
+            {localImages.length > 1 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbsRow} contentContainerStyle={styles.thumbsContent}>
-                {images.map((uri, i) => (
+                {localImages.map((uri, i) => (
                   <Pressable key={i} onPress={() => { setActiveIdx(i); resetTransform(); }}
                     style={[styles.thumbWrap, i === activeIdx && styles.thumbWrapActive]}>
                     <Image source={{ uri }} style={styles.thumbImg} contentFit="cover" />
@@ -404,7 +441,6 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
               </ScrollView>
             ) : null}
 
-            {/* Edit Actions */}
             <View style={styles.editActionsRow}>
               <Pressable onPress={() => { resetTransform(); setEditMode('rotate'); }} style={styles.editActionBtn}>
                 <MaterialIcons name="rotate-right" size={24} color="#fff" />
@@ -418,6 +454,20 @@ export function ImageViewerModal({ visible, images, initialIndex = 0, onClose, o
                 <MaterialIcons name="zoom-out-map" size={24} color="#fff" />
                 <Text style={styles.editActionLabel}>إعادة ضبط</Text>
               </Pressable>
+              {/* Save to artwork button */}
+              {onSaveToArtwork ? (
+                <Pressable
+                  onPress={handleSaveToArtwork}
+                  disabled={savingToArtwork || !hasUnsavedChanges}
+                  style={[styles.editActionBtn, styles.saveArtworkBtn, !hasUnsavedChanges && styles.saveArtworkBtnDisabled]}
+                >
+                  {savingToArtwork
+                    ? <ActivityIndicator size="small" color={Colors.primary} />
+                    : <MaterialIcons name="save" size={24} color={hasUnsavedChanges ? Colors.primary : Colors.textMuted} />
+                  }
+                  <Text style={[styles.editActionLabel, hasUnsavedChanges && { color: Colors.primary }]}>حفظ في الألبوم</Text>
+                </Pressable>
+              ) : null}
               <View style={styles.zoomHint}>
                 <MaterialIcons name="pinch" size={18} color="rgba(255,255,255,0.4)" />
                 <Text style={styles.zoomHintText}>ابضغط مرتين للتكبير</Text>
@@ -452,6 +502,13 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center',
   },
+
+  // Save banner
+  saveBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: Spacing.base,
+  },
+  saveBannerText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#0d0d0f', flex: 1, textAlign: 'center' },
 
   imageArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   imageWrap: { alignItems: 'center', justifyContent: 'center' },
@@ -509,8 +566,16 @@ const styles = StyleSheet.create({
   editActionsRow: {
     flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
     paddingVertical: Spacing.md, paddingHorizontal: Spacing.base,
+    flexWrap: 'wrap', gap: 4,
   },
-  editActionBtn: { alignItems: 'center', gap: 4, paddingHorizontal: Spacing.md, minWidth: 60 },
+  editActionBtn: { alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm, minWidth: 60 },
+  saveArtworkBtn: {
+    backgroundColor: 'rgba(201,168,76,0.12)', borderRadius: Radius.md,
+    paddingVertical: 6, borderWidth: 1, borderColor: Colors.primary + '40',
+  },
+  saveArtworkBtnDisabled: {
+    backgroundColor: 'transparent', borderColor: 'transparent',
+  },
   editActionLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.85)', fontWeight: FontWeight.medium },
   zoomHint: { alignItems: 'center', gap: 3 },
   zoomHintText: { fontSize: 9, color: 'rgba(255,255,255,0.35)', textAlign: 'center' },

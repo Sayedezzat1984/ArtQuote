@@ -46,6 +46,58 @@ const DELIVERY_PERIOD_OPTIONS = [
   '3 أشهر',
 ];
 
+interface QuoteTemplate {
+  name: string;
+  icon: string;
+  paymentTerms: string;
+  deliveryPeriod: string;
+  notes: string;
+  discount: string;
+}
+
+const QUOTE_TEMPLATES: QuoteTemplate[] = [
+  {
+    name: 'نحت مخصص',
+    icon: '🗿',
+    paymentTerms: '50% مقدم والباقي عند التسليم',
+    deliveryPeriod: 'شهر واحد',
+    notes: 'العمل مصنوع يدوياً بالكامل حسب المواصفات المطلوبة. يتم التواصل خلال فترة التنفيذ لمتابعة التفاصيل.',
+    discount: '0',
+  },
+  {
+    name: 'جدارية فنية',
+    icon: '🎨',
+    paymentTerms: '30% مقدم والباقي خلال 30 يوم',
+    deliveryPeriod: '2 أسبوع',
+    notes: 'تشمل التركيب والتثبيت في الموقع. الأبعاد النهائية تُحدد بعد معاينة المكان.',
+    discount: '0',
+  },
+  {
+    name: 'وحدة إضاءة',
+    icon: '💡',
+    paymentTerms: 'دفع كامل مقدماً',
+    deliveryPeriod: '3 أيام عمل',
+    notes: 'يشمل التركيب الكهربائي الكامل وضمان لمدة سنة. يُرجى تحديد موقع التركيب مسبقاً.',
+    discount: '0',
+  },
+  {
+    name: 'عرض خاص',
+    icon: '⭐',
+    paymentTerms: 'كاش',
+    deliveryPeriod: 'فوري',
+    notes: 'هذا عرض خاص لفترة محدودة. السعر نهائي وغير قابل للتفاوض.',
+    discount: '10',
+  },
+  {
+    name: 'مشروع متكامل',
+    icon: '🏗️',
+    paymentTerms: '30% مقدم والباقي خلال 30 يوم',
+    deliveryPeriod: '3 أشهر',
+    notes: 'يشمل التصميم والتنفيذ والتركيب الكامل. يتم توقيع عقد رسمي قبل البدء في العمل.',
+    discount: '0',
+  },
+];
+
 export function QuoteFormModal({ visible, quote, customers, artworks, preSelectedCustomer, onSave, onClose }: QuoteFormModalProps) {
   const { currency, t } = useLanguage();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -60,6 +112,7 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
   const [showArtworkPicker, setShowArtworkPicker] = useState(false);
   const [showPaymentPicker, setShowPaymentPicker] = useState(false);
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -143,6 +196,15 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
             <Text style={globalStyles.modalTitle}>{quote ? 'تعديل عرض السعر' : 'عرض سعر جديد'}</Text>
           </View>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+            {/* Templates */}
+            <Pressable onPress={() => setShowTemplates(true)} style={templStyles.templateBtn}>
+              <View style={templStyles.templateBtnLeft}>
+                <Text style={templStyles.templateBtnText}>اختر قالباً جاهزاً</Text>
+                <Text style={templStyles.templateBtnSub}>شروط دفع، مدة تسليم، ملاحظات</Text>
+              </View>
+              <MaterialIcons name="auto-awesome" size={22} color={Colors.primary} />
+            </Pressable>
 
             {/* Customer */}
             <Text style={styles.sectionLabel}>العميل *</Text>
@@ -335,6 +397,44 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
         </View>
       </Modal>
 
+      {/* Templates Picker */}
+      <Modal visible={showTemplates} transparent animationType="slide" onRequestClose={() => setShowTemplates(false)}>
+        <View style={globalStyles.overlay}>
+          <View style={globalStyles.modalSheet}>
+            <View style={globalStyles.modalHandle} />
+            <Text style={globalStyles.modalTitle}>قوالب عروض الأسعار</Text>
+            <FlatList
+              data={QUOTE_TEMPLATES}
+              keyExtractor={t => t.name}
+              style={{ maxHeight: 420 }}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setPaymentTerms(item.paymentTerms);
+                    setDeliveryPeriod(item.deliveryPeriod);
+                    setNotes(item.notes);
+                    setDiscount(item.discount);
+                    setShowTemplates(false);
+                  }}
+                  style={templStyles.templateItem}
+                >
+                  <View style={templStyles.templateItemContent}>
+                    <Text style={templStyles.templateItemName}>{item.name}</Text>
+                    <Text style={templStyles.templateItemDetail}>
+                      {item.paymentTerms} · {item.deliveryPeriod}
+                    </Text>
+                    {item.notes ? (
+                      <Text style={templStyles.templateItemNotes} numberOfLines={2}>{item.notes}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={templStyles.templateEmoji}>{item.icon}</Text>
+                </Pressable>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+
       {/* Delivery Period Picker */}
       <Modal visible={showDeliveryPicker} transparent animationType="slide" onRequestClose={() => setShowDeliveryPicker(false)}>
         <View style={globalStyles.overlay}>
@@ -358,6 +458,27 @@ export function QuoteFormModal({ visible, quote, customers, artworks, preSelecte
     </Modal>
   );
 }
+
+const templStyles = StyleSheet.create({
+  templateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.base, paddingVertical: Spacing.md,
+    borderWidth: 1, borderColor: Colors.primary + '50', marginBottom: Spacing.base,
+  },
+  templateBtnLeft: { flex: 1, alignItems: 'flex-end', marginLeft: Spacing.sm },
+  templateBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
+  templateBtnSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
+  templateItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  templateItemContent: { flex: 1, alignItems: 'flex-end' },
+  templateItemName: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  templateItemDetail: { fontSize: FontSize.sm, color: Colors.primary, marginTop: 2 },
+  templateItemNotes: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4, textAlign: 'right', lineHeight: 16 },
+  templateEmoji: { fontSize: 28, marginLeft: Spacing.base },
+});
 
 const styles = StyleSheet.create({
   titleRow: {
