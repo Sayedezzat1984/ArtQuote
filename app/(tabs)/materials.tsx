@@ -57,7 +57,7 @@ function MaterialForm({ material, onSave, onClose }: MaterialFormProps) {
   const selectedUnit = UNIT_OPTIONS.find(u => u.key === unitType);
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} style={styles.formScroll}>
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.formScroll} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
       <Input label="اسم الخامة *" value={name} onChangeText={setName} placeholder="مثال: طلاء، إضاءة LED، رخام..." />
       <Input label="الوصف" value={description} onChangeText={setDescription} placeholder="وصف الخامة وخصائصها..." multiline numberOfLines={3} />
       <Input label="المورد / المصدر" value={supplier} onChangeText={setSupplier} placeholder="اسم الشركة أو المورد" />
@@ -347,12 +347,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radius.xxl,
     borderTopRightRadius: Radius.xxl,
     paddingHorizontal: Spacing.base,
-    paddingBottom: Spacing.xxxl,
-    maxHeight: '95%',
-    flexShrink: 1,
+    height: '92%',
   },
   // Form
-  formScroll: { flexGrow: 1 },
+  formScroll: { flex: 1 },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.base,
   },
