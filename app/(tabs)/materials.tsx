@@ -57,7 +57,11 @@ function MaterialForm({ material, onSave, onClose }: MaterialFormProps) {
   const selectedUnit = UNIT_OPTIONS.find(u => u.key === unitType);
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} style={styles.formScroll} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.formContent}
+    >
       <Input label="اسم الخامة *" value={name} onChangeText={setName} placeholder="مثال: طلاء، إضاءة LED، رخام..." />
       <Input label="الوصف" value={description} onChangeText={setDescription} placeholder="وصف الخامة وخصائصها..." multiline numberOfLines={3} />
       <Input label="المورد / المصدر" value={supplier} onChangeText={setSupplier} placeholder="اسم الشركة أو المورد" />
@@ -94,8 +98,11 @@ function MaterialForm({ material, onSave, onClose }: MaterialFormProps) {
       <Text style={styles.fieldLabel}>اللون التعريفي</Text>
       <View style={styles.colorsRow}>
         {PRESET_COLORS.map(c => (
-          <Pressable key={c} onPress={() => setColor(c)}
-            style={[styles.colorCircle, { backgroundColor: c }, color === c && styles.colorCircleActive]}>
+          <Pressable
+            key={c}
+            onPress={() => setColor(c)}
+            style={[styles.colorCircle, { backgroundColor: c }, color === c && styles.colorCircleActive]}
+          >
             {color === c && <MaterialIcons name="check" size={14} color="#fff" />}
           </Pressable>
         ))}
@@ -128,6 +135,7 @@ export default function MaterialsScreen() {
   const { currency } = useLanguage();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Material | null>(null);
+  const [formKey, setFormKey] = useState(0);
   const [search, setSearch] = useState('');
 
   const filtered = materials.filter(m =>
@@ -135,6 +143,17 @@ export default function MaterialsScreen() {
   );
 
   const totalStockValue = materials.reduce((sum, m) => sum + (m.unitPrice || 0) * (m.stock || 0), 0);
+
+  function openForm(mat: Material | null) {
+    setEditing(mat);
+    setFormKey(k => k + 1);
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+  }
 
   function handleDelete(m: Material) {
     showAlert('حذف الخامة', `هل تريد حذف "${m.name}"؟`, [
@@ -147,7 +166,7 @@ export default function MaterialsScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditing(null); setShowForm(true); }} style={styles.addBtn}>
+        <Pressable onPress={() => openForm(null)} style={styles.addBtn}>
           <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
         </Pressable>
         <Text style={styles.title}>إدارة الخامات</Text>
@@ -164,7 +183,9 @@ export default function MaterialsScreen() {
           <Text style={styles.statLabel}>قيمة المخزون ({currency})</Text>
         </View>
         <View style={[styles.statCard, { borderColor: Colors.success + '50' }]}>
-          <Text style={[styles.statValue, { color: Colors.success }]}>{materials.filter(m => (m.stock || 0) > 0).length}</Text>
+          <Text style={[styles.statValue, { color: Colors.success }]}>
+            {materials.filter(m => (m.stock || 0) > 0).length}
+          </Text>
           <Text style={styles.statLabel}>خامات متوفرة</Text>
         </View>
       </View>
@@ -202,7 +223,7 @@ export default function MaterialsScreen() {
                 <Pressable onPress={() => handleDelete(item)} style={[styles.iconBtn, styles.deleteSmall]} hitSlop={8}>
                   <MaterialIcons name="delete-outline" size={16} color={Colors.error} />
                 </Pressable>
-                <Pressable onPress={() => { setEditing(item); setShowForm(true); }} style={[styles.iconBtn, styles.editSmall]} hitSlop={8}>
+                <Pressable onPress={() => openForm(item)} style={[styles.iconBtn, styles.editSmall]} hitSlop={8}>
                   <MaterialIcons name="edit" size={16} color={Colors.primary} />
                 </Pressable>
               </View>
@@ -246,29 +267,36 @@ export default function MaterialsScreen() {
       />
 
       {/* Form Modal */}
-      <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => { setShowForm(false); setEditing(null); }}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={globalStyles.overlay}>
+      <Modal
+        visible={showForm}
+        transparent
+        animationType="slide"
+        onRequestClose={closeForm}
+      >
+        <KeyboardAvoidingView
+          style={styles.kavWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlay} onPress={closeForm} />
           <View style={styles.formSheet}>
-            <View style={globalStyles.modalHandle} />
-            {/* Back / close */}
+            <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <Pressable onPress={() => { setShowForm(false); setEditing(null); }} style={styles.backBtn}>
+              <Pressable onPress={closeForm} style={styles.backBtn}>
                 <MaterialIcons name="arrow-back" size={20} color={Colors.textSecondary} />
                 <Text style={styles.backBtnText}>رجوع</Text>
               </Pressable>
-              <Text style={globalStyles.modalTitle}>{editing ? 'تعديل الخامة' : 'خامة جديدة'}</Text>
+              <Text style={styles.modalTitle}>{editing ? 'تعديل الخامة' : 'خامة جديدة'}</Text>
             </View>
             <MaterialForm
+              key={formKey}
               material={editing}
               onSave={async data => {
                 if (editing) await updateMaterial(editing.id, data);
                 else await addMaterial(data);
-                setShowForm(false); setEditing(null);
+                closeForm();
               }}
-              onClose={() => { setShowForm(false); setEditing(null); }}
+              onClose={closeForm}
             />
-          </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -342,17 +370,25 @@ const styles = StyleSheet.create({
   stockBadgeText: { fontSize: 11, color: Colors.success, fontWeight: FontWeight.medium },
   materialDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right', lineHeight: 20 },
   materialNotes: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 4, fontStyle: 'italic' },
+  // Modal
+  kavWrapper: { flex: 1, justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: Colors.overlay },
   formSheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.xxl,
     borderTopRightRadius: Radius.xxl,
     paddingHorizontal: Spacing.base,
-    height: '92%',
+    maxHeight: '90%',
   },
-  // Form
-  formScroll: { flex: 1 },
+  modalHandle: {
+    width: 40, height: 4, backgroundColor: Colors.border,
+    borderRadius: Radius.full, alignSelf: 'center', marginVertical: Spacing.md,
+  },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.base,
+  },
+  modalTitle: {
+    fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'center',
   },
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -361,6 +397,8 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   backBtnText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
+  // Form fields
+  formContent: { paddingBottom: Spacing.xxxl },
   fieldLabel: {
     fontSize: FontSize.sm, fontWeight: FontWeight.medium,
     color: Colors.textSecondary, textAlign: 'right',
