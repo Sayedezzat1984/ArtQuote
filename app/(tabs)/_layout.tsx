@@ -3,18 +3,20 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
-import { Colors } from '@/constants/theme';
+import { Colors, FontSize } from '@/constants/theme';
+import { isTablet } from '@/constants/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
 
+  const tabBarHeight = isTablet ? 72 : 60;
   const tabBarStyle = {
-    height: Platform.select({ ios: insets.bottom + 60, android: insets.bottom + 60, default: 70 }),
-    paddingTop: 8,
-    paddingBottom: Platform.select({ ios: insets.bottom + 8, android: insets.bottom + 8, default: 8 }),
-    paddingHorizontal: 8,
+    height: Platform.select({ ios: insets.bottom + tabBarHeight, android: insets.bottom + tabBarHeight, default: tabBarHeight + 10 }),
+    paddingTop: isTablet ? 10 : 8,
+    paddingBottom: Platform.select({ ios: insets.bottom + (isTablet ? 12 : 8), android: insets.bottom + (isTablet ? 12 : 8), default: isTablet ? 12 : 8 }),
+    paddingHorizontal: isTablet ? 24 : 8,
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
@@ -27,7 +29,7 @@ export default function TabLayout() {
         tabBarStyle,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: isTablet ? 13 : 11, fontWeight: '600' },
       }}
     >
       <Tabs.Screen

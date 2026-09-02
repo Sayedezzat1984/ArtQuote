@@ -9,6 +9,7 @@ import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CustomerCard, CustomerFormModal, QuoteFormModal, EmptyState } from '@/components';
 import { Customer } from '@/contexts/AppContext';
+import { isTablet, pagePadding } from '@/constants/responsive';
 
 export default function CustomersScreen() {
   const { customers, artworks, quotes, addCustomer, updateCustomer, deleteCustomer, addQuote } = useApp();
@@ -34,8 +35,9 @@ export default function CustomersScreen() {
   }
 
   function handleNewQuote(c: Customer) { setQuoteCustomer(c); setShowQuoteForm(true); }
-
   function getQuotesCount(cId: string) { return quotes.filter(q => q.customerId === cId).length; }
+
+  const cols = isTablet ? 2 : 1;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -78,19 +80,24 @@ export default function CustomersScreen() {
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
+        numColumns={cols}
+        key={`cols-${cols}`}
+        columnWrapperStyle={cols > 1 ? styles.columnWrapper : undefined}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <EmptyState icon="people" title={t('customerDatabase')} subtitle="اضغط على + لإضافة أول عميل" />
         }
         renderItem={({ item }) => (
-          <CustomerCard
-            customer={item}
-            quotesCount={getQuotesCount(item.id)}
-            onEdit={() => handleEdit(item)}
-            onDelete={() => handleDelete(item)}
-            onNewQuote={() => handleNewQuote(item)}
-          />
+          <View style={cols > 1 ? styles.colItem : undefined}>
+            <CustomerCard
+              customer={item}
+              quotesCount={getQuotesCount(item.id)}
+              onEdit={() => handleEdit(item)}
+              onDelete={() => handleDelete(item)}
+              onNewQuote={() => handleNewQuote(item)}
+            />
+          </View>
         )}
       />
 
@@ -121,30 +128,34 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base, paddingVertical: Spacing.md,
+    paddingHorizontal: pagePadding, paddingVertical: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  title: { fontSize: isTablet ? FontSize.xxl : FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   addBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: isTablet ? 48 : 40, height: isTablet ? 48 : 40,
+    borderRadius: isTablet ? 24 : 20,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, margin: Spacing.base,
+    paddingHorizontal: Spacing.md,
+    margin: pagePadding, marginBottom: Spacing.sm,
     borderWidth: 1, borderColor: Colors.border,
   },
   searchInput: { flex: 1, paddingVertical: Spacing.md, fontSize: FontSize.base, color: Colors.textPrimary, marginRight: Spacing.sm },
   statsBar: {
     flexDirection: 'row', backgroundColor: Colors.card,
-    marginHorizontal: Spacing.base, borderRadius: Radius.md,
-    padding: Spacing.md, marginBottom: Spacing.base,
-    borderWidth: 1, borderColor: Colors.border,
+    marginHorizontal: pagePadding, borderRadius: Radius.md,
+    padding: isTablet ? Spacing.base : Spacing.md,
+    marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.border,
   },
   stat: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  statValue: { fontSize: isTablet ? FontSize.xxl : FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary },
   statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
   statDivider: { width: 1, backgroundColor: Colors.border, marginVertical: Spacing.xs },
-  listContent: { paddingHorizontal: Spacing.base, paddingBottom: Spacing.base },
+  listContent: { paddingHorizontal: pagePadding, paddingBottom: Spacing.base },
+  columnWrapper: { gap: Spacing.md },
+  colItem: { flex: 1 },
 });

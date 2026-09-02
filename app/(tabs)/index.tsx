@@ -10,6 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { BackupModal } from '@/components/feature/BackupModal';
 import { QuoteDetailModal } from '@/components/feature/QuoteDetailModal';
 import { Quote } from '@/contexts/AppContext';
+import { isTablet, pagePadding, contentMaxWidth } from '@/constants/responsive';
 
 export default function HomeScreen() {
   const { artworks, customers, quotes } = useApp();
@@ -24,8 +25,8 @@ export default function HomeScreen() {
 
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
   const availableArtworks = artworks.filter(a => a.available).length;
-  const recentQuotes = quotes.slice(0, 5);
-  const recentArtworks = artworks.slice(0, 3);
+  const recentQuotes = quotes.slice(0, isTablet ? 8 : 5);
+  const recentArtworks = artworks.slice(0, isTablet ? 6 : 3);
 
   const stats = [
     { label: t('artworks'), value: artworks.length, icon: 'palette' as const, color: Colors.primary, route: '/(tabs)/portfolio' },
@@ -73,11 +74,11 @@ export default function HomeScreen() {
             ) : null}
           </View>
           <View style={styles.revenueIcon}>
-            <MaterialIcons name="trending-up" size={32} color={Colors.primary} />
+            <MaterialIcons name="trending-up" size={isTablet ? 44 : 32} color={Colors.primary} />
           </View>
         </View>
 
-        {/* Stats Grid */}
+        {/* Stats Grid — 4 columns on tablet, 2 on phone */}
         <View style={styles.statsGrid}>
           {stats.map(stat => (
             <Pressable
@@ -86,7 +87,7 @@ export default function HomeScreen() {
               style={({ pressed }) => [styles.statCard, pressed && styles.pressed]}
             >
               <View style={[styles.statIcon, { backgroundColor: stat.color + '20' }]}>
-                <MaterialIcons name={stat.icon} size={22} color={stat.color} />
+                <MaterialIcons name={stat.icon} size={isTablet ? 26 : 22} color={stat.color} />
               </View>
               <Text style={styles.statValue}>{stat.value}</Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
@@ -107,71 +108,142 @@ export default function HomeScreen() {
               onPress={() => router.push(action.route as any)}
               style={({ pressed }) => [styles.quickBtn, pressed && styles.pressed]}
             >
-              <MaterialIcons name={action.icon} size={24} color={action.color} />
+              <MaterialIcons name={action.icon} size={isTablet ? 30 : 24} color={action.color} />
               <Text style={styles.quickBtnText}>{action.label}</Text>
             </Pressable>
           ))}
         </View>
 
-        {/* Recent Quotes */}
-        {recentQuotes.length > 0 ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <Pressable onPress={() => router.push('/(tabs)/quotes')}>
-                <Text style={styles.seeAll}>{t('viewAll')}</Text>
-              </Pressable>
-              <Text style={styles.sectionTitle}>{t('recentQuotes')}</Text>
-            </View>
-            {recentQuotes.map(q => (
-              <Pressable
-                key={q.id}
-                onPress={() => setSelectedQuote(q)}
-                style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
-              >
-                <View style={styles.recentLeft}>
-                  <View style={[styles.statusDot, { backgroundColor: statusColors[q.status] }]} />
-                  <Text style={[styles.statusLabel, { color: statusColors[q.status] }]}>{statusLabels[q.status]}</Text>
-                </View>
-                <View style={styles.recentCenter}>
-                  <Text style={styles.recentCustomer}>{q.customerName}</Text>
-                  <View style={styles.quoteNumRow}>
-                    <MaterialIcons name="visibility" size={11} color={Colors.textMuted} />
-                    <Text style={styles.recentNum}>{q.quoteNumber} · {q.items.length} {lang === 'ar' ? 'منتج' : 'items'}</Text>
+        {/* Two-column layout on tablet for Recent Quotes + Recent Artworks */}
+        {isTablet ? (
+          <View style={styles.tabletTwoCol}>
+            {/* Recent Quotes Column */}
+            <View style={styles.tabletCol}>
+              {recentQuotes.length > 0 ? (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Pressable onPress={() => router.push('/(tabs)/quotes')}>
+                      <Text style={styles.seeAll}>{t('viewAll')}</Text>
+                    </Pressable>
+                    <Text style={styles.sectionTitle}>{t('recentQuotes')}</Text>
                   </View>
-                </View>
-                <View style={styles.recentRight}>
-                  <Text style={styles.recentTotal}>{q.total.toLocaleString()}</Text>
-                  <Text style={styles.recentCurrency}>{currency}</Text>
-                </View>
-              </Pressable>
-            ))}
-          </>
-        ) : null}
-
-        {/* Recent Artworks */}
-        {recentArtworks.length > 0 ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <Pressable onPress={() => router.push('/(tabs)/portfolio')}>
-                <Text style={styles.seeAll}>{t('viewAll')}</Text>
-              </Pressable>
-              <Text style={styles.sectionTitle}>{t('recentArtworks')}</Text>
+                  {recentQuotes.map(q => (
+                    <Pressable
+                      key={q.id}
+                      onPress={() => setSelectedQuote(q)}
+                      style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
+                    >
+                      <View style={styles.recentLeft}>
+                        <View style={[styles.statusDot, { backgroundColor: statusColors[q.status] }]} />
+                        <Text style={[styles.statusLabel, { color: statusColors[q.status] }]}>{statusLabels[q.status]}</Text>
+                      </View>
+                      <View style={styles.recentCenter}>
+                        <Text style={styles.recentCustomer}>{q.customerName}</Text>
+                        <View style={styles.quoteNumRow}>
+                          <MaterialIcons name="visibility" size={11} color={Colors.textMuted} />
+                          <Text style={styles.recentNum}>{q.quoteNumber} · {q.items.length} {lang === 'ar' ? 'منتج' : 'items'}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.recentRight}>
+                        <Text style={styles.recentTotal}>{q.total.toLocaleString()}</Text>
+                        <Text style={styles.recentCurrency}>{currency}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </>
+              ) : null}
             </View>
-            {recentArtworks.map(a => (
-              <Pressable key={a.id} onPress={() => router.push('/(tabs)/portfolio')} style={styles.recentCard}>
-                <View style={[styles.availableDot, { backgroundColor: a.available ? Colors.success : Colors.error }]} />
-                <View style={styles.recentCenter}>
-                  <Text style={styles.recentCustomer}>{a.title}</Text>
-                  <Text style={styles.recentNum}>{a.category} · {a.year}</Text>
+
+            {/* Recent Artworks Column */}
+            <View style={styles.tabletCol}>
+              {recentArtworks.length > 0 ? (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Pressable onPress={() => router.push('/(tabs)/portfolio')}>
+                      <Text style={styles.seeAll}>{t('viewAll')}</Text>
+                    </Pressable>
+                    <Text style={styles.sectionTitle}>{t('recentArtworks')}</Text>
+                  </View>
+                  {recentArtworks.map(a => (
+                    <Pressable key={a.id} onPress={() => router.push('/(tabs)/portfolio')} style={styles.recentCard}>
+                      <View style={[styles.availableDot, { backgroundColor: a.available ? Colors.success : Colors.error }]} />
+                      <View style={styles.recentCenter}>
+                        <Text style={styles.recentCustomer}>{a.title}</Text>
+                        <Text style={styles.recentNum}>{a.category} · {a.year}</Text>
+                      </View>
+                      <View style={styles.recentRight}>
+                        <Text style={styles.recentTotal}>{a.price.toLocaleString()}</Text>
+                        <Text style={styles.recentCurrency}>{currency}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </>
+              ) : null}
+            </View>
+          </View>
+        ) : (
+          <>
+            {/* Recent Quotes — phone */}
+            {recentQuotes.length > 0 ? (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Pressable onPress={() => router.push('/(tabs)/quotes')}>
+                    <Text style={styles.seeAll}>{t('viewAll')}</Text>
+                  </Pressable>
+                  <Text style={styles.sectionTitle}>{t('recentQuotes')}</Text>
                 </View>
-                <View style={styles.recentRight}>
-                  <Text style={styles.recentTotal}>{a.price.toLocaleString()}</Text>
-                  <Text style={styles.recentCurrency}>{currency}</Text>
+                {recentQuotes.map(q => (
+                  <Pressable
+                    key={q.id}
+                    onPress={() => setSelectedQuote(q)}
+                    style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
+                  >
+                    <View style={styles.recentLeft}>
+                      <View style={[styles.statusDot, { backgroundColor: statusColors[q.status] }]} />
+                      <Text style={[styles.statusLabel, { color: statusColors[q.status] }]}>{statusLabels[q.status]}</Text>
+                    </View>
+                    <View style={styles.recentCenter}>
+                      <Text style={styles.recentCustomer}>{q.customerName}</Text>
+                      <View style={styles.quoteNumRow}>
+                        <MaterialIcons name="visibility" size={11} color={Colors.textMuted} />
+                        <Text style={styles.recentNum}>{q.quoteNumber} · {q.items.length} {lang === 'ar' ? 'منتج' : 'items'}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.recentRight}>
+                      <Text style={styles.recentTotal}>{q.total.toLocaleString()}</Text>
+                      <Text style={styles.recentCurrency}>{currency}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </>
+            ) : null}
+
+            {/* Recent Artworks — phone */}
+            {recentArtworks.length > 0 ? (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Pressable onPress={() => router.push('/(tabs)/portfolio')}>
+                    <Text style={styles.seeAll}>{t('viewAll')}</Text>
+                  </Pressable>
+                  <Text style={styles.sectionTitle}>{t('recentArtworks')}</Text>
                 </View>
-              </Pressable>
-            ))}
+                {recentArtworks.map(a => (
+                  <Pressable key={a.id} onPress={() => router.push('/(tabs)/portfolio')} style={styles.recentCard}>
+                    <View style={[styles.availableDot, { backgroundColor: a.available ? Colors.success : Colors.error }]} />
+                    <View style={styles.recentCenter}>
+                      <Text style={styles.recentCustomer}>{a.title}</Text>
+                      <Text style={styles.recentNum}>{a.category} · {a.year}</Text>
+                    </View>
+                    <View style={styles.recentRight}>
+                      <Text style={styles.recentTotal}>{a.price.toLocaleString()}</Text>
+                      <Text style={styles.recentCurrency}>{currency}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -193,61 +265,89 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   scroll: { flex: 1 },
-  content: { padding: Spacing.base },
+  content: {
+    padding: pagePadding,
+    ...(contentMaxWidth ? { alignSelf: 'center' as const, width: '100%', maxWidth: contentMaxWidth } : {}),
+  },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.xl,
   },
   headerRight: { alignItems: 'flex-end' },
   headerLeft: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', marginTop: 4 },
   iconBtn: {
-    width: 38, height: 38, borderRadius: 19,
+    width: isTablet ? 44 : 38, height: isTablet ? 44 : 38,
+    borderRadius: isTablet ? 22 : 19,
     backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
   langBtn: {
-    width: 38, height: 38, borderRadius: 19,
+    width: isTablet ? 44 : 38, height: isTablet ? 44 : 38,
+    borderRadius: isTablet ? 22 : 19,
     backgroundColor: Colors.primarySurface, borderWidth: 1, borderColor: Colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
-  langBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
-  greeting: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
-  subtitle: { fontSize: FontSize.base, color: Colors.textSecondary, textAlign: 'right' },
+  langBtnText: { fontSize: isTablet ? FontSize.base : FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
+  greeting: { fontSize: isTablet ? FontSize.xxxl : FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
+  subtitle: { fontSize: isTablet ? FontSize.md : FontSize.base, color: Colors.textSecondary, textAlign: 'right' },
   revenueCard: {
-    backgroundColor: Colors.card, borderRadius: Radius.xl, padding: Spacing.xl,
+    backgroundColor: Colors.card, borderRadius: Radius.xl,
+    padding: isTablet ? Spacing.xxl : Spacing.xl,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.primary + '40', ...Shadow.gold,
   },
   revenueLeft: { flex: 1, alignItems: 'flex-end' },
-  revenueLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
-  revenueAmount: { fontSize: FontSize.xxxl, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  revenueLabel: { fontSize: isTablet ? FontSize.base : FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  revenueAmount: { fontSize: isTablet ? 36 : FontSize.xxxl, fontWeight: FontWeight.extrabold, color: Colors.primary },
   pendingText: { fontSize: FontSize.sm, color: Colors.warning, marginTop: Spacing.xs },
   revenueIcon: {
-    width: 60, height: 60, borderRadius: 30,
+    width: isTablet ? 72 : 60, height: isTablet ? 72 : 60,
+    borderRadius: isTablet ? 36 : 30,
     backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center',
   },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xl },
+  // 4 columns on tablet, 2 on phone
+  statsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    gap: isTablet ? Spacing.base : Spacing.md,
+    marginBottom: Spacing.xl,
+  },
   statCard: {
-    flex: 1, minWidth: '45%', backgroundColor: Colors.card, borderRadius: Radius.lg,
-    padding: Spacing.base, alignItems: 'flex-end', borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
+    flex: 1,
+    minWidth: isTablet ? '22%' : '45%',
+    backgroundColor: Colors.card, borderRadius: Radius.lg,
+    padding: isTablet ? Spacing.lg : Spacing.base,
+    alignItems: 'flex-end', borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
   },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   statIcon: {
-    width: 40, height: 40, borderRadius: 20,
+    width: isTablet ? 48 : 40, height: isTablet ? 48 : 40,
+    borderRadius: isTablet ? 24 : 20,
     alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.sm,
   },
-  statValue: { fontSize: FontSize.xxxl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
-  statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textAlign: 'right' },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.md },
+  statValue: { fontSize: isTablet ? FontSize.xxxl + 4 : FontSize.xxxl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  statLabel: { fontSize: isTablet ? FontSize.sm : FontSize.xs, color: Colors.textMuted, marginTop: 2, textAlign: 'right' },
+  sectionTitle: {
+    fontSize: isTablet ? FontSize.xl : FontSize.lg,
+    fontWeight: FontWeight.bold, color: Colors.textPrimary,
+    textAlign: 'right', marginBottom: Spacing.md,
+  },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   seeAll: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.medium },
-  quickActions: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
+  quickActions: { flexDirection: 'row', gap: isTablet ? Spacing.lg : Spacing.md, marginBottom: Spacing.xl },
   quickBtn: {
-    flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md,
+    flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md,
+    padding: isTablet ? Spacing.lg : Spacing.md,
     alignItems: 'center', gap: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
   },
-  quickBtnText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium, textAlign: 'center' },
+  quickBtnText: {
+    fontSize: isTablet ? FontSize.sm : FontSize.xs,
+    color: Colors.textSecondary, fontWeight: FontWeight.medium, textAlign: 'center',
+  },
+  // Tablet two-column layout
+  tabletTwoCol: { flexDirection: 'row', gap: Spacing.xl, alignItems: 'flex-start' },
+  tabletCol: { flex: 1 },
   recentCard: {
-    backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md,
+    backgroundColor: Colors.card, borderRadius: Radius.md,
+    padding: isTablet ? Spacing.base : Spacing.md,
     flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm,
     borderWidth: 1, borderColor: Colors.border,
   },
@@ -255,11 +355,11 @@ const styles = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.medium },
   recentCenter: { flex: 1, paddingHorizontal: Spacing.md, alignItems: 'flex-end' },
-  recentCustomer: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary, textAlign: 'right' },
+  recentCustomer: { fontSize: isTablet ? FontSize.base : FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary, textAlign: 'right' },
   quoteNumRow: { flexDirection: 'row', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 },
   recentNum: { fontSize: FontSize.xs, color: Colors.textMuted },
   recentRight: { alignItems: 'flex-end' },
-  recentTotal: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
+  recentTotal: { fontSize: isTablet ? FontSize.md : FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
   recentCurrency: { fontSize: FontSize.xs, color: Colors.textMuted },
   availableDot: { width: 10, height: 10, borderRadius: 5 },
 });

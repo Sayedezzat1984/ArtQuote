@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Share } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
@@ -9,6 +9,7 @@ import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { QuoteCard, QuoteFormModal, QuoteDetailModal, EmptyState } from '@/components';
 import { Quote } from '@/contexts/AppContext';
+import { isTablet, pagePadding } from '@/constants/responsive';
 
 export default function QuotesScreen() {
   const { quotes, customers, artworks, addQuote, updateQuote, deleteQuote } = useApp();
@@ -46,11 +47,10 @@ export default function QuotesScreen() {
 
   function handleEdit(q: Quote) {
     setDetailQuote(null);
-    setTimeout(() => {
-      setEditingQuote(q);
-      setShowForm(true);
-    }, 350);
+    setTimeout(() => { setEditingQuote(q); setShowForm(true); }, 350);
   }
+
+  const cols = isTablet ? 2 : 1;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -114,39 +114,39 @@ export default function QuotesScreen() {
       <FlatList
         data={filtered}
         keyExtractor={q => q.id}
+        numColumns={cols}
+        key={`cols-${cols}`}
+        columnWrapperStyle={cols > 1 ? styles.columnWrapper : undefined}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <EmptyState icon="description" title={t('priceQuotes')} subtitle="اضغط على + لإنشاء أول عرض سعر" />
         }
         renderItem={({ item }) => (
-          <Pressable onPress={() => setDetailQuote(item)} style={styles.cardWrapper}>
-            <QuoteCard
-              quote={item}
-              onPress={() => setDetailQuote(item)}
-              onEdit={() => handleEdit(item)}
-              onDelete={() => handleDelete(item)}
-            />
+          <View style={[styles.cardWrapper, cols > 1 && styles.colItem]}>
+            <Pressable onPress={() => setDetailQuote(item)}>
+              <QuoteCard
+                quote={item}
+                onPress={() => setDetailQuote(item)}
+                onEdit={() => handleEdit(item)}
+                onDelete={() => handleDelete(item)}
+              />
+            </Pressable>
             {/* Quick status chips */}
             <View style={styles.quickStatusRow}>
               {(['draft', 'sent', 'accepted', 'rejected'] as Quote['status'][]).filter(s => s !== item.status).map(s => {
                 const labels: Record<Quote['status'], string> = { draft: t('statusDraft'), sent: t('statusSent'), accepted: t('statusAccepted'), rejected: t('statusRejected') };
                 return (
-                  <Pressable
-                    key={s}
-                    onPress={() => updateQuote(item.id, { status: s })}
-                    style={styles.quickStatusBtn}
-                  >
+                  <Pressable key={s} onPress={() => updateQuote(item.id, { status: s })} style={styles.quickStatusBtn}>
                     <Text style={styles.quickStatusText}>{labels[s]}</Text>
                   </Pressable>
                 );
               })}
             </View>
-          </Pressable>
+          </View>
         )}
       />
 
-      {/* Quote Form */}
       <QuoteFormModal
         visible={showForm}
         quote={editingQuote}
@@ -155,13 +155,11 @@ export default function QuotesScreen() {
         onSave={data => {
           if (editingQuote) updateQuote(editingQuote.id, data);
           else addQuote(data);
-          setShowForm(false);
-          setEditingQuote(null);
+          setShowForm(false); setEditingQuote(null);
         }}
         onClose={() => { setShowForm(false); setEditingQuote(null); }}
       />
 
-      {/* Quote Detail */}
       <QuoteDetailModal
         visible={detailQuote !== null}
         quote={detailQuote}
@@ -179,49 +177,41 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base, paddingVertical: Spacing.md,
+    paddingHorizontal: pagePadding, paddingVertical: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  title: { fontSize: isTablet ? FontSize.xxl : FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   addBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: isTablet ? 48 : 40, height: isTablet ? 48 : 40,
+    borderRadius: isTablet ? 24 : 20,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
-  summaryRow: { flexDirection: 'row', gap: Spacing.sm, padding: Spacing.base, paddingBottom: Spacing.sm },
-  summaryCard: {
-    flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md,
-    padding: Spacing.sm, alignItems: 'center', borderWidth: 1,
-  },
-  summaryValue: { fontSize: FontSize.md, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  summaryRow: { flexDirection: 'row', gap: Spacing.sm, padding: pagePadding, paddingBottom: Spacing.sm },
+  summaryCard: { flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md, padding: isTablet ? Spacing.base : Spacing.sm, alignItems: 'center', borderWidth: 1 },
+  summaryValue: { fontSize: isTablet ? FontSize.lg : FontSize.md, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
   summaryLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textAlign: 'center' },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, marginHorizontal: Spacing.base,
+    paddingHorizontal: Spacing.md, marginHorizontal: pagePadding,
     marginBottom: Spacing.sm, borderWidth: 1, borderColor: Colors.border,
   },
   searchInput: { flex: 1, paddingVertical: Spacing.md, fontSize: FontSize.base, color: Colors.textPrimary, marginRight: Spacing.sm },
   filterOuter: { height: 50 },
-  filterContent: { paddingHorizontal: Spacing.base, gap: Spacing.sm, alignItems: 'center' },
-  filterChip: {
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1, borderColor: Colors.border,
-  },
+  filterContent: { paddingHorizontal: pagePadding, gap: Spacing.sm, alignItems: 'center' },
+  filterChip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border },
   filterChipActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
   filterChipText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   filterChipTextActive: { color: Colors.primary },
-  listContent: { padding: Spacing.base, paddingTop: Spacing.sm },
+  listContent: { padding: pagePadding, paddingTop: Spacing.sm },
+  columnWrapper: { gap: Spacing.md },
+  colItem: { flex: 1 },
   cardWrapper: { marginBottom: Spacing.xs },
   quickStatusRow: {
     flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap',
     paddingHorizontal: Spacing.sm, paddingBottom: Spacing.md,
     justifyContent: 'flex-end', marginTop: -Spacing.sm,
   },
-  quickStatusBtn: {
-    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
-    paddingHorizontal: Spacing.sm, paddingVertical: 5,
-    borderWidth: 1, borderColor: Colors.border,
-  },
+  quickStatusBtn: { backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full, paddingHorizontal: Spacing.sm, paddingVertical: 5, borderWidth: 1, borderColor: Colors.border },
   quickStatusText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
 });

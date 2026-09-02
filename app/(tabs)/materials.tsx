@@ -13,6 +13,7 @@ import { Material } from '@/contexts/AppContext';
 import { ScrollView } from 'react-native';
 import { Modal } from 'react-native';
 import { globalStyles } from '@/constants/styles';
+import { isTablet, pagePadding } from '@/constants/responsive';
 
 const PRESET_COLORS = [
   '#C9A84C', '#4CAF82', '#6A9FE8', '#E86A6A', '#E8A44A',
@@ -279,15 +280,16 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base, paddingVertical: Spacing.md,
+    paddingHorizontal: pagePadding, paddingVertical: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  title: { fontSize: isTablet ? FontSize.xxl : FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   addBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: isTablet ? 48 : 40, height: isTablet ? 48 : 40,
+    borderRadius: isTablet ? 24 : 20,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
-  statsRow: { flexDirection: 'row', gap: Spacing.sm, padding: Spacing.base, paddingBottom: Spacing.sm },
+  statsRow: { flexDirection: 'row', gap: Spacing.sm, padding: pagePadding, paddingBottom: Spacing.sm },
   statCard: {
     flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md,
     padding: Spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
