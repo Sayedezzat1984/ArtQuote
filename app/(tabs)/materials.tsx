@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput, ScrollView, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput, ScrollView, Modal, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
@@ -12,6 +12,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Material } from '@/contexts/AppContext';
 import { globalStyles } from '@/constants/styles';
 import { isTablet, pagePadding } from '@/constants/responsive';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 const PRESET_COLORS = [
   '#C9A84C', '#4CAF82', '#6A9FE8', '#E86A6A', '#E8A44A',
@@ -272,10 +274,12 @@ export default function MaterialsScreen() {
         transparent
         animationType="slide"
         onRequestClose={closeForm}
+        statusBarTranslucent
       >
         <KeyboardAvoidingView
           style={styles.kavWrapper}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
         >
           <Pressable style={styles.modalOverlay} onPress={closeForm} />
           <View style={styles.formSheet}>
@@ -378,7 +382,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radius.xxl,
     borderTopRightRadius: Radius.xxl,
     paddingHorizontal: Spacing.base,
-    maxHeight: '90%',
+    height: Math.floor(SCREEN_HEIGHT * 0.88),
   },
   modalHandle: {
     width: 40, height: 4, backgroundColor: Colors.border,
