@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput, ScrollView, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
@@ -10,8 +10,6 @@ import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Material } from '@/contexts/AppContext';
-import { ScrollView } from 'react-native';
-import { Modal } from 'react-native';
 import { globalStyles } from '@/constants/styles';
 import { isTablet, pagePadding } from '@/constants/responsive';
 
@@ -249,8 +247,9 @@ export default function MaterialsScreen() {
 
       {/* Form Modal */}
       <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => { setShowForm(false); setEditing(null); }}>
-        <View style={globalStyles.overlay}>
-          <View style={[globalStyles.modalSheet, { maxHeight: '95%' }]}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={globalStyles.overlay}>
+          <View style={styles.formSheet}>
             <View style={globalStyles.modalHandle} />
             {/* Back / close */}
             <View style={styles.modalHeader}>
@@ -270,7 +269,8 @@ export default function MaterialsScreen() {
               onClose={() => { setShowForm(false); setEditing(null); }}
             />
           </View>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -342,8 +342,17 @@ const styles = StyleSheet.create({
   stockBadgeText: { fontSize: 11, color: Colors.success, fontWeight: FontWeight.medium },
   materialDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right', lineHeight: 20 },
   materialNotes: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 4, fontStyle: 'italic' },
+  formSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    paddingHorizontal: Spacing.base,
+    paddingBottom: Spacing.xxxl,
+    maxHeight: '95%',
+    flexShrink: 1,
+  },
   // Form
-  formScroll: { flex: 1 },
+  formScroll: { flexGrow: 1 },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.base,
   },
