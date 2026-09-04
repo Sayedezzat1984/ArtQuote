@@ -1,6 +1,7 @@
 // Powered by OnSpace.AI
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlertProvider } from '@/template';
@@ -11,8 +12,20 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AdminLoginScreen } from '@/components/feature/AdminLoginScreen';
 import { Colors } from '@/constants/theme';
 
+// ─── Root notification listener setup ───────────────────────────────────
+function useNotificationListener() {
+  useEffect(() => {
+    // Handle notification response (tapped from background/closed)
+    const sub = Notifications.addNotificationResponseReceivedListener(_response => {
+      // Navigate to gallery on tap — router handles it via deep link
+    });
+    return () => sub.remove();
+  }, []);
+}
+
 // ─── Inner layout: consumes AuthContext ───────────────────────────────────
 function AppShell() {
+  useNotificationListener();
   const { appMode } = useAuth();
 
   if (appMode === 'loading') {

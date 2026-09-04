@@ -1,8 +1,9 @@
+
 // Powered by OnSpace.AI — Guest Gallery
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Dimensions,
-  ActivityIndicator, Animated, AppState, AppStateStatus,
+  ActivityIndicator, Animated, AppState, AppStateStatus, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -11,8 +12,10 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/hooks/useApp';
 import { useAuth } from '@/contexts/AuthContext';
+import { useVisitor } from '@/contexts/VisitorContext';
 import { Artwork } from '@/contexts/AppContext';
 import { isTablet } from '@/constants/responsive';
+import { notifyNewArtwork, areNotificationsEnabled } from '@/services/notificationService';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_GAP = 12;
@@ -27,9 +30,11 @@ type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
 export default function GuestGalleryScreen() {
   const { artworks, artworkCategories, forceSyncNow } = useApp() as any;
   const { signOut } = useAuth();
+  const { notificationsEnabled, requestNotificationPermission } = useVisitor();
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
 
   // Refresh state
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
@@ -39,6 +44,7 @@ export default function GuestGalleryScreen() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncing = useRef(false);
+  const appStateRef = useRef<AppStateStatus>('active');
 
   // Filter: only show artworks that are visible to visitors (default true for backward compat)
   const visibleArtworks = useMemo(() => {
@@ -48,12 +54,16 @@ export default function GuestGalleryScreen() {
   // Initialise known IDs on first load (don't mark as new on mount)
   useEffect(() => {
     knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only on mount
+    // Show notification permission banner if not yet enabled (after 1.5s)
+    const timer = setTimeout(async () => {
+      const enabled = await areNotificationsEnabled();
+      if (!enabled) setShowNotifBanner(true);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [visibleArtworks]); // Dependency added to fix the error
 
   // ── Auto-sync: periodic while gallery is open ─────────────────────────────
   useEffect(() => {
-    // Start interval
     autoSyncTimer.current = setInterval(() => {
       silentSync();
     }, AUTO_SYNC_INTERVAL);
@@ -64,19 +74,18 @@ export default function GuestGalleryScreen() {
     return () => {
       if (autoSyncTimer.current) clearInterval(autoSyncTimer.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [silentSync]); // Dependency added to fix the error
 
   // ── Auto-sync: when app returns to foreground ─────────────────────────────
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      appStateRef.current = state;
       if (state === 'active') {
         silentSync();
       }
     });
     return () => sub.remove();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [silentSync]); // Dependency added to fix the error
 
   // ── Silent sync: doesn't show loading but detects new artworks ────────────
   const silentSync = useCallback(async () => {
@@ -93,10 +102,21 @@ export default function GuestGalleryScreen() {
       const addedIds = new Set<string>();
       currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
       knownIdsRef.current = currentIds;
+
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
         // Auto-clear NEW badges after 10 seconds
         setTimeout(() => setNewArtworkIds(new Set()), 10_000);
+
+        // ── Push notification for new artworks ──────────────────────────
+        // If app is in background, show system notification
+        // If in foreground, notification handler will still show it (+ toast below)
+        const newArtworkTitles = visibleArtworks
+          .filter((a: Artwork) => addedIds.has(a.id))
+          .map((a: Artwork) => a.title);
+
+        const firstTitle = newArtworkTitles[0] || 'عمل جديد';
+        await notifyNewArtwork(firstTitle, addedIds.size);
       }
     } catch {
       // Silent — don't surface errors for background sync
@@ -140,6 +160,12 @@ export default function GuestGalleryScreen() {
       setRefreshStatus('idle');
     }
   }, [refreshStatus, forceSyncNow, visibleArtworks]);
+
+  // ── Enable notifications ──────────────────────────────────────────────────
+  const handleEnableNotifications = useCallback(async () => {
+    const granted = await requestNotificationPermission();
+    if (granted) setShowNotifBanner(false);
+  }, [requestNotificationPermission]);
 
   const ALL_LABEL = 'الكل';
   const categoryLabels = [ALL_LABEL, ...artworkCategories.map((c: any) => c.name)];
@@ -190,6 +216,35 @@ export default function GuestGalleryScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* Notification permission banner */}
+      {showNotifBanner && !notificationsEnabled ? (
+        <View style={styles.notifBanner}>
+          <View style={styles.notifBannerLeft}>
+            <MaterialIcons name="notifications-none" size={20} color={Colors.primary} />
+            <View>
+              <Text style={styles.notifBannerTitle}>تفعيل الإشعارات</Text>
+              <Text style={styles.notifBannerSub}>كن أول من يعلم بالأعمال الجديدة</Text>
+            </View>
+          </View>
+          <View style={styles.notifBannerActions}>
+            <Pressable onPress={handleEnableNotifications} style={styles.notifEnableBtn}>
+              <Text style={styles.notifEnableBtnText}>تفعيل</Text>
+            </Pressable>
+            <Pressable onPress={() => setShowNotifBanner(false)} style={styles.notifDismissBtn} hitSlop={8}>
+              <MaterialIcons name="close" size={16} color={Colors.textMuted} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Notification active indicator */}
+      {notificationsEnabled ? (
+        <View style={styles.notifActiveBar}>
+          <MaterialIcons name="notifications-active" size={13} color={Colors.success} />
+          <Text style={styles.notifActiveText}>ستصلك إشعارات عند إضافة أعمال جديدة</Text>
+        </View>
+      ) : null}
 
       {/* Refreshing status bar */}
       {refreshStatus === 'refreshing' ? (
@@ -371,6 +426,83 @@ const styles = StyleSheet.create({
   refreshBtnActive: {
     backgroundColor: Colors.surfaceElevated,
     borderColor: Colors.border,
+  },
+
+  // Notification banner
+  notifBanner: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  notifBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  notifBannerTitle: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+    textAlign: 'right',
+  },
+  notifBannerSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    textAlign: 'right',
+    marginTop: 1,
+  },
+  notifBannerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notifEnableBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  notifEnableBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    color: '#0d0d0f',
+  },
+  notifDismissBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+
+  // Notification active bar
+  notifActiveBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    backgroundColor: Colors.successSurface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.success + '30',
+  },
+  notifActiveText: {
+    fontSize: 11,
+    color: Colors.success,
+    fontWeight: FontWeight.medium,
   },
 
   // Status bar (while refreshing)

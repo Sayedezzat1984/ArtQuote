@@ -8,6 +8,10 @@ import {
   upsertDocSilent, listenCollection, fetchOnce, uid,
 } from '@/services/firestoreService';
 import { COLLECTIONS } from '@/services/firebase';
+import {
+  registerForPushNotifications,
+  areNotificationsEnabled,
+} from '@/services/notificationService';
 
 const SESSION_KEY = 'visitor_session';
 
@@ -30,6 +34,8 @@ export interface Visitor {
   totalArtworkViews: number;
   lastArtworkViewed: string;
   sessionStartedAt: string;
+  pushToken: string | null;
+  notificationsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,10 +68,12 @@ interface VisitorContextType {
   analytics: VisitorAnalytics;
   isRegistered: boolean;
   isLoadingVisitor: boolean;
+  notificationsEnabled: boolean;
   registerVisitor: (name: string, phone: string) => Promise<Visitor>;
   trackArtworkView: (artworkId: string, artworkTitle: string) => Promise<void>;
   refreshVisitors: () => Promise<void>;
   clearSession: () => Promise<void>;
+  requestNotificationPermission: () => Promise<boolean>;
 }
 
 const VisitorContext = createContext<VisitorContextType | undefined>(undefined);
@@ -154,6 +162,7 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
   const [currentVisitor, setCurrentVisitor] = useState<Visitor | null>(null);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [isLoadingVisitor, setIsLoadingVisitor] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const mounted = useRef(true);
 
   // Load session on mount
@@ -173,6 +182,9 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const session = JSON.parse(raw);
         if (mounted.current) setCurrentVisitor(session as Visitor);
+        // Check notification status
+        const enabled = await areNotificationsEnabled();
+        if (mounted.current) setNotificationsEnabled(enabled);
         // Try to refresh from Firestore (best-effort, don't fail)
         try {
           const fresh = await fetchOnce(COLLECTIONS.visitors);
@@ -189,6 +201,13 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
     let visitor: Visitor;
 
     // Try to find existing visitor by phone (best-effort, don't fail if Firestore unreachable)
+    // Register for push notifications (non-blocking)
+    let pushToken: string | null = null;
+    try {
+      pushToken = await registerForPushNotifications();
+      if (mounted.current) setNotificationsEnabled(pushToken !== null);
+    } catch {}
+
     try {
       const existing = await fetchOnce(COLLECTIONS.visitors);
       const existingVisitor = existing.find((v: any) => v.phone === phone.trim());
@@ -200,6 +219,8 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
           lastVisitDate: now,
           totalVisits: (existingVisitor.totalVisits || 1) + 1,
           sessionStartedAt: now,
+          pushToken: pushToken || existingVisitor.pushToken || null,
+          notificationsEnabled: pushToken !== null,
           updatedAt: now,
         } as Visitor;
       } else {
@@ -214,6 +235,8 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
           totalArtworkViews: 0,
           lastArtworkViewed: '',
           sessionStartedAt: now,
+          pushToken,
+          notificationsEnabled: pushToken !== null,
           createdAt: now,
           updatedAt: now,
         };
@@ -231,6 +254,8 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
         totalArtworkViews: 0,
         lastArtworkViewed: '',
         sessionStartedAt: now,
+        pushToken,
+        notificationsEnabled: pushToken !== null,
         createdAt: now,
         updatedAt: now,
       };
@@ -290,13 +315,38 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
     if (mounted.current) setCurrentVisitor(null);
   }, []);
 
+  const requestNotificationPermission = useCallback(async (): Promise<boolean> => {
+    try {
+      const token = await registerForPushNotifications();
+      const enabled = token !== null;
+      setNotificationsEnabled(enabled);
+      // Update visitor record with new token
+      if (currentVisitor && enabled) {
+        const updated: Visitor = {
+          ...currentVisitor,
+          pushToken: token,
+          notificationsEnabled: true,
+          updatedAt: new Date().toISOString(),
+        };
+        setCurrentVisitor(updated);
+        AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updated)).catch(() => {});
+        upsertDocSilent(COLLECTIONS.visitors, updated.id, updated).catch(() => {});
+      }
+      return enabled;
+    } catch {
+      return false;
+    }
+  }, [currentVisitor]);
+
   const isRegistered = currentVisitor !== null;
   const analytics = computeAnalytics(visitors);
 
   return (
     <VisitorContext.Provider value={{
       currentVisitor, visitors, analytics, isRegistered, isLoadingVisitor,
+      notificationsEnabled,
       registerVisitor, trackArtworkView, refreshVisitors, clearSession,
+      requestNotificationPermission,
     }}>
       {children}
     </VisitorContext.Provider>
