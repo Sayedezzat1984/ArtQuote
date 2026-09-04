@@ -13,13 +13,12 @@ import { Quote } from '@/contexts/AppContext';
 import { isTablet, pagePadding, contentMaxWidth } from '@/constants/responsive';
 
 export default function HomeScreen() {
-  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts, trashArtworks, trashCustomers, trashQuotes, trashMaterials, trashSuppliers } = useApp();
+  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts } = useApp();
   const { t, currency, lang, toggleLang } = useLanguage();
   const router = useRouter();
   const [showBackup, setShowBackup] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
 
-  const totalTrashCount = (trashArtworks?.length || 0) + (trashCustomers?.length || 0) + (trashQuotes?.length || 0) + (trashMaterials?.length || 0) + (trashSuppliers?.length || 0);
   const totalRevenue = quotes.filter(q => q.status === 'accepted').reduce((s, q) => s + q.total, 0);
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
   const availableArtworks = artworks.filter(a => a.available).length;
@@ -49,7 +48,6 @@ export default function HomeScreen() {
           <View style={styles.headerLeft}>
             <Pressable onPress={() => setShowBackup(true)} style={styles.iconBtn}>
               <MaterialIcons name="cloud-upload" size={20} color={Colors.textSecondary} />
-              {totalTrashCount > 0 ? <View style={styles.trashBadge}><Text style={styles.trashBadgeTxt}>{totalTrashCount}</Text></View> : null}
             </Pressable>
             <Pressable onPress={toggleLang} style={styles.langBtn}>
               <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'ع'}</Text>
@@ -250,8 +248,6 @@ const styles = StyleSheet.create({
   headerRight: { alignItems: 'flex-end' },
   headerLeft: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', marginTop: 4 },
   iconBtn: { width: isTablet ? 44 : 38, height: isTablet ? 44 : 38, borderRadius: isTablet ? 22 : 19, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
-  trashBadge: { position: 'absolute', top: -4, left: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  trashBadgeTxt: { fontSize: 9, color: '#fff', fontWeight: FontWeight.bold },
   langBtn: { width: isTablet ? 44 : 38, height: isTablet ? 44 : 38, borderRadius: isTablet ? 22 : 19, backgroundColor: Colors.primarySurface, borderWidth: 1, borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
   langBtnText: { fontSize: isTablet ? FontSize.base : FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
   greeting: { fontSize: isTablet ? FontSize.xxxl : FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
