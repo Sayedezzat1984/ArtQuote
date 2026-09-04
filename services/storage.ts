@@ -10,6 +10,11 @@ const KEYS = {
   suppliers: 'suppliers_v1',
   fullMaterials: 'full_materials_v1',
   artworkCosts: 'artwork_costs_v1',
+  // Manufacturing system
+  workers: 'workers_v1',
+  productionOrders: 'production_orders_v1',
+  internalManufacturing: 'internal_manufacturing_v1',
+  externalManufacturing: 'external_manufacturing_v1',
 };
 
 async function load<T>(key: string): Promise<T[]> {
@@ -39,3 +44,12 @@ export const loadFullMaterials = () => load<any>(KEYS.fullMaterials);
 export const saveFullMaterials = (d: any[]) => save(KEYS.fullMaterials, d);
 export const loadArtworkCosts = () => load<any>(KEYS.artworkCosts);
 export const saveArtworkCosts = (d: any[]) => save(KEYS.artworkCosts, d);
+// Manufacturing
+export const loadWorkers = () => load<any>(KEYS.workers);
+export const saveWorkers = (d: any[]) => save(KEYS.workers, d);
+export const loadProductionOrders = () => load<any>(KEYS.productionOrders);
+export const saveProductionOrders = (d: any[]) => save(KEYS.productionOrders, d);
+export const loadInternalManufacturing = () => load<any>(KEYS.internalManufacturing);
+export const saveInternalManufacturing = (d: any[]) => save(KEYS.internalManufacturing, d);
+export const loadExternalManufacturing = () => load<any>(KEYS.externalManufacturing);
+export const saveExternalManufacturing = (d: any[]) => save(KEYS.externalManufacturing, d);

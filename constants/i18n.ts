@@ -11,6 +11,7 @@ export const translations = {
     tabQuotes: 'العروض',
     tabMaterials: 'الخامات',
     tabSuppliers: 'الموردين',
+    tabManufacturing: 'التصنيع',
     // common
     add: 'إضافة',
     edit: 'تعديل',
@@ -119,6 +120,10 @@ export const translations = {
     // suppliers
     suppliersTitle: 'سجل الموردين',
     addSupplier: 'إضافة مورد',
+    addMaterialItem: 'إضافة خامة للعمل',
+    addWorker: 'إضافة عامل',
+    addProductionOrder: 'أمر تصنيع',
+    addExternalManuf: 'تصنيع خارجي',
     supplierName: 'اسم المورد',
     companyName: 'اسم الشركة',
     contactPerson: 'الشخص المسؤول',
@@ -187,6 +192,7 @@ export const translations = {
     tabQuotes: 'Quotes',
     tabMaterials: 'Materials',
     tabSuppliers: 'Suppliers',
+    tabManufacturing: 'Manufacturing',
     add: 'Add',
     edit: 'Edit',
     delete: 'Delete',
@@ -286,6 +292,10 @@ export const translations = {
     // suppliers
     suppliersTitle: 'Suppliers Registry',
     addSupplier: 'Add Supplier',
+    addMaterialItem: 'Add Material to Work',
+    addWorker: 'Add Worker',
+    addProductionOrder: 'Production Order',
+    addExternalManuf: 'External Manufacturing',
     supplierName: 'Supplier Name',
     companyName: 'Company Name',
     contactPerson: 'Contact Person',

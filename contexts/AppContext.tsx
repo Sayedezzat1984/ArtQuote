@@ -8,6 +8,10 @@ import {
   loadSuppliers, saveSuppliers,
   loadFullMaterials, saveFullMaterials,
   loadArtworkCosts, saveArtworkCosts,
+  loadWorkers, saveWorkers,
+  loadProductionOrders, saveProductionOrders,
+  loadInternalManufacturing, saveInternalManufacturing,
+  loadExternalManufacturing, saveExternalManufacturing,
 } from '@/services/storage';
 
 // ─── Artwork ───────────────────────────────────────────────────────────────
@@ -17,7 +21,6 @@ export interface Artwork {
   description: string;
   category: string;
   price: number;
-  // Separate measurement fields
   height: string;
   width: string;
   depth: string;
@@ -27,7 +30,7 @@ export interface Artwork {
   weight: string;
   weightUnit: 'gram' | 'kg' | 'ton';
   dimensionUnit: 'mm' | 'cm' | 'meter';
-  dimensions: string; // auto-generated display string
+  dimensions: string;
   quantity: string;
   year: string;
   available: boolean;
@@ -38,7 +41,7 @@ export interface Artwork {
   createdAt: string;
 }
 
-// ─── Material (simple, for artworkCard linking) ────────────────────────────
+// ─── Material (simple) ────────────────────────────────────────────────────
 export interface Material {
   id: string;
   name: string;
@@ -121,7 +124,26 @@ export interface Supplier {
   createdAt: string;
 }
 
-// ─── Artwork Cost ──────────────────────────────────────────────────────────
+// ─── Worker ────────────────────────────────────────────────────────────────
+export interface Worker {
+  id: string;
+  name: string;
+  craft: string; // e.g. نجار، بياض، فيبرجلاس
+  dailyWage: number;
+  phone: string;
+  notes: string;
+  createdAt: string;
+}
+
+// ─── Manufacturing Stage ───────────────────────────────────────────────────
+export interface ManufacturingStage {
+  id: string;
+  name: string;
+  description: string;
+  order: number;
+}
+
+// ─── Material Item in Cost Sheet ──────────────────────────────────────────
 export interface CostMaterialItem {
   id: string;
   materialId: string;
@@ -129,19 +151,204 @@ export interface CostMaterialItem {
   typeId: string;
   typeName: string;
   quantity: number;
+  plannedQuantity: number;
   unit: string;
   unitPrice: number;
   total: number;
+  plannedTotal: number;
+  stageId: string;
+  notes: string;
 }
 
+// ─── Labor Record ─────────────────────────────────────────────────────────
+export interface LaborRecord {
+  id: string;
+  workerId: string;
+  workerName: string;
+  craft: string;
+  stageId: string;
+  stageName: string;
+  numWorkers: number;
+  numDays: number;
+  dailyWage: number;
+  isBatchCost: boolean; // false = per piece, true = fixed for whole batch
+  total: number;
+  notes: string;
+}
+
+// ─── External Labor (مصنعيات) ─────────────────────────────────────────────
+export interface ExternalLaborRecord {
+  id: string;
+  serviceName: string;
+  workshopOrPerson: string;
+  stageId: string;
+  stageName: string;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+  total: number;
+  notes: string;
+}
+
+// ─── Transport Record ─────────────────────────────────────────────────────
+export interface TransportRecord {
+  id: string;
+  description: string;
+  from: string;
+  to: string;
+  numTrips: number;
+  costPerTrip: number;
+  loadingCost: number;
+  unloadingCost: number;
+  additionalCost: number;
+  total: number;
+  assignedTo: string; // 'materials' | 'manufacturing' | 'delivery' | 'installation' | stageId
+  includedInManufacturing: boolean;
+  notes: string;
+}
+
+// ─── Packaging Record ─────────────────────────────────────────────────────
+export interface PackagingRecord {
+  id: string;
+  packagingType: string;
+  materialId: string;
+  materialName: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  laborCost: number;
+  artworkQuantity: number;
+  total: number;
+  includedInSupplierPrice: boolean;
+  notes: string;
+}
+
+// ─── Other Expense ────────────────────────────────────────────────────────
+export interface OtherExpense {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  unitCost: number;
+  total: number;
+  date: string;
+  isBatchCost: boolean;
+  notes: string;
+}
+
+// ─── External Manufacturing ────────────────────────────────────────────────
+export interface ExternalManufacturing {
+  id: string;
+  workshopName: string;
+  supplierId: string;
+  supplierName: string;
+  artworkId: string;
+  stageId: string;
+  stageName: string;
+  description: string;
+  quantity: number;
+  pricePerUnit: number;
+  externalMaterialsCost: number;
+  transportCost: number;
+  otherExpenses: number;
+  total: number;
+  transportIncluded: boolean;
+  materialsIncluded: boolean;
+  date: string;
+  notes: string;
+  createdAt: string;
+}
+
+// ─── Internal Manufacturing ────────────────────────────────────────────────
+export interface InternalManufacturing {
+  id: string;
+  artworkId: string;
+  stageId: string;
+  stageName: string;
+  description: string;
+  productionQuantity: number;
+  laborRecords: LaborRecord[];
+  externalLaborRecords: ExternalLaborRecord[];
+  materialItems: CostMaterialItem[];
+  totalLaborCost: number;
+  totalExternalLaborCost: number;
+  totalMaterialCost: number;
+  totalStageCost: number;
+  notes: string;
+  createdAt: string;
+}
+
+// ─── Production Order ─────────────────────────────────────────────────────
+export type ProductionOrderStatus =
+  | 'new' | 'preparing' | 'in_production' | 'external_manufacturing'
+  | 'finishing' | 'packaging' | 'ready' | 'delivered' | 'cancelled';
+
+export interface ProductionOrder {
+  id: string;
+  orderNumber: string;
+  artworkId: string;
+  artworkTitle: string;
+  customerId: string;
+  customerName: string;
+  plannedQuantity: number;
+  actualQuantity: number;
+  startDate: string;
+  deliveryDate: string;
+  status: ProductionOrderStatus;
+  stages: ManufacturingStage[];
+  materialItems: CostMaterialItem[];
+  laborRecords: LaborRecord[];
+  externalLaborRecords: ExternalLaborRecord[];
+  transportRecords: TransportRecord[];
+  packagingRecords: PackagingRecord[];
+  otherExpenses: OtherExpense[];
+  externalManufacturingIds: string[];
+  // Costs
+  totalMaterialCost: number;
+  totalLaborCost: number;
+  totalExternalLaborCost: number;
+  totalExternalManufacturingCost: number;
+  totalTransportCost: number;
+  totalPackagingCost: number;
+  totalOtherExpenses: number;
+  productionCostBeforeTax: number;
+  applyTax: boolean;
+  taxPercentage: number;
+  taxAmount: number;
+  totalCostAfterTax: number;
+  costPerPiece: number;
+  // Pricing
+  profitPercentage: number;
+  profitAmount: number;
+  suggestedSellingPrice: number;
+  discountPercentage: number;
+  discountAmount: number;
+  finalSellingPrice: number;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Artwork Cost Sheet (enhanced) ────────────────────────────────────────
 export interface ArtworkCostSheet {
   id: string;
   artworkId: string;
   version: number;
   date: string;
+  productionQuantity: number;
   // Material items
   materialItems: CostMaterialItem[];
-  // Additional costs
+  // Labor
+  laborRecords: LaborRecord[];
+  // External labor (مصنعيات)
+  externalLaborRecords: ExternalLaborRecord[];
+  // Transport
+  transportRecords: TransportRecord[];
+  // Packaging
+  packagingRecords: PackagingRecord[];
+  // Other expenses
+  otherExpenses: OtherExpense[];
+  // Additional costs (legacy simple fields)
   laborCost: number;
   externalManufacturingCost: number;
   paintingCost: number;
@@ -153,7 +360,18 @@ export interface ArtworkCostSheet {
   emergencyCost: number;
   // Totals
   totalMaterialCost: number;
+  totalLaborCost: number;
+  totalExternalLaborCost: number;
+  totalTransportCost: number;
+  totalPackagingCost: number;
+  totalOtherExpensesCost: number;
   totalProductionCost: number;
+  costPerPiece: number;
+  // Tax
+  applyTax: boolean;
+  taxPercentage: number;
+  taxAmount: number;
+  totalCostAfterTax: number;
   // Pricing
   profitPercentage: number;
   profitAmount: number;
@@ -161,8 +379,6 @@ export interface ArtworkCostSheet {
   discountPercentage: number;
   discountAmount: number;
   finalPrice: number;
-  taxPercentage: number;
-  taxAmount: number;
   deliveryCost: number;
   installationPriceCost: number;
   // Settings
@@ -214,17 +430,19 @@ export interface Quote {
 
 // ─── Context Type ──────────────────────────────────────────────────────────
 interface AppContextType {
-  // Legacy
   artworks: Artwork[];
   customers: Customer[];
   quotes: Quote[];
   materials: Material[];
   loading: boolean;
   artworkCategories: ArtworkCategory[];
-  // Admin
   suppliers: Supplier[];
   fullMaterials: FullMaterial[];
   artworkCosts: ArtworkCostSheet[];
+  workers: Worker[];
+  productionOrders: ProductionOrder[];
+  internalManufacturing: InternalManufacturing[];
+  externalManufacturing: ExternalManufacturing[];
   // Artwork CRUD
   addArtwork: (artwork: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
   updateArtwork: (id: string, artwork: Partial<Artwork>) => Promise<void>;
@@ -259,11 +477,43 @@ interface AppContextType {
   deleteArtworkCost: (id: string) => Promise<void>;
   getArtworkCosts: (artworkId: string) => ArtworkCostSheet[];
   getLatestCost: (artworkId: string) => ArtworkCostSheet | undefined;
+  // Worker CRUD
+  addWorker: (w: Omit<Worker, 'id' | 'createdAt'>) => Promise<void>;
+  updateWorker: (id: string, w: Partial<Worker>) => Promise<void>;
+  deleteWorker: (id: string) => Promise<void>;
+  // Production Order CRUD
+  addProductionOrder: (o: Omit<ProductionOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateProductionOrder: (id: string, o: Partial<ProductionOrder>) => Promise<void>;
+  deleteProductionOrder: (id: string) => Promise<void>;
+  getOrdersByArtwork: (artworkId: string) => ProductionOrder[];
+  // Internal Manufacturing CRUD
+  addInternalManufacturing: (m: Omit<InternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
+  updateInternalManufacturing: (id: string, m: Partial<InternalManufacturing>) => Promise<void>;
+  deleteInternalManufacturing: (id: string) => Promise<void>;
+  // External Manufacturing CRUD
+  addExternalManufacturing: (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
+  updateExternalManufacturing: (id: string, m: Partial<ExternalManufacturing>) => Promise<void>;
+  deleteExternalManufacturing: (id: string) => Promise<void>;
   // Backup
   restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const DEFAULT_STAGES: ManufacturingStage[] = [
+  { id: 's1', name: 'عمل القالب', description: '', order: 1 },
+  { id: 's2', name: 'صب الفيبر', description: '', order: 2 },
+  { id: 's3', name: 'الحدادة', description: '', order: 3 },
+  { id: 's4', name: 'التجميع', description: '', order: 4 },
+  { id: 's5', name: 'الصنفرة', description: '', order: 5 },
+  { id: 's6', name: 'الدهان', description: '', order: 6 },
+  { id: 's7', name: 'التشطيب', description: '', order: 7 },
+  { id: 's8', name: 'الكهرباء', description: '', order: 8 },
+  { id: 's9', name: 'التركيب', description: '', order: 9 },
+  { id: 's10', name: 'التغليف', description: '', order: 10 },
+];
+
+export const DEFAULT_MANUFACTURING_STAGES = DEFAULT_STAGES;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
@@ -274,6 +524,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [fullMaterials, setFullMaterials] = useState<FullMaterial[]>([]);
   const [artworkCosts, setArtworkCosts] = useState<ArtworkCostSheet[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
+  const [internalManufacturing, setInternalManufacturing] = useState<InternalManufacturing[]>([]);
+  const [externalManufacturing, setExternalManufacturing] = useState<ExternalManufacturing[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -287,9 +541,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const [
           storedArtworks, storedCustomers, storedQuotes, storedMaterials,
           storedCategories, storedSuppliers, storedFullMaterials, storedCosts,
+          storedWorkers, storedOrders, storedInternal, storedExternal,
         ] = await Promise.all([
           loadArtworks(), loadCustomers(), loadQuotes(), loadMaterials(),
           loadCategories(), loadSuppliers(), loadFullMaterials(), loadArtworkCosts(),
+          loadWorkers(), loadProductionOrders(), loadInternalManufacturing(), loadExternalManufacturing(),
         ]);
         setArtworks(storedArtworks);
         setCustomers(storedCustomers);
@@ -298,6 +554,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSuppliers(storedSuppliers);
         setFullMaterials(storedFullMaterials);
         setArtworkCosts(storedCosts);
+        setWorkers(storedWorkers);
+        setProductionOrders(storedOrders);
+        setInternalManufacturing(storedInternal);
+        setExternalManufacturing(storedExternal);
 
         const defaultCategories: ArtworkCategory[] = [
           { id: '1', name: 'نحت جداريات', createdAt: new Date().toISOString() },
@@ -487,6 +747,85 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return costs.reduce((latest, c) => c.version > latest.version ? c : latest);
   }, [artworkCosts]);
 
+  // ── Worker ──
+  const addWorker = useCallback(async (w: Omit<Worker, 'id' | 'createdAt'>) => {
+    const newW: Worker = { ...w, id: Date.now().toString(), createdAt: new Date().toISOString() };
+    const updated = [newW, ...workers];
+    setWorkers(updated); await saveWorkers(updated);
+  }, [workers]);
+
+  const updateWorker = useCallback(async (id: string, w: Partial<Worker>) => {
+    const updated = workers.map(x => x.id === id ? { ...x, ...w } : x);
+    setWorkers(updated); await saveWorkers(updated);
+  }, [workers]);
+
+  const deleteWorker = useCallback(async (id: string) => {
+    const updated = workers.filter(x => x.id !== id);
+    setWorkers(updated); await saveWorkers(updated);
+  }, [workers]);
+
+  // ── Production Order ──
+  const addProductionOrder = useCallback(async (o: Omit<ProductionOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const num = (productionOrders.length + 1).toString().padStart(4, '0');
+    const year = new Date().getFullYear();
+    const newO: ProductionOrder = {
+      ...o, id: Date.now().toString(),
+      orderNumber: `PO-${year}-${num}`,
+      createdAt: now, updatedAt: now,
+    };
+    const updated = [newO, ...productionOrders];
+    setProductionOrders(updated); await saveProductionOrders(updated);
+  }, [productionOrders]);
+
+  const updateProductionOrder = useCallback(async (id: string, o: Partial<ProductionOrder>) => {
+    const updated = productionOrders.map(x => x.id === id ? { ...x, ...o, updatedAt: new Date().toISOString() } : x);
+    setProductionOrders(updated); await saveProductionOrders(updated);
+  }, [productionOrders]);
+
+  const deleteProductionOrder = useCallback(async (id: string) => {
+    const updated = productionOrders.filter(x => x.id !== id);
+    setProductionOrders(updated); await saveProductionOrders(updated);
+  }, [productionOrders]);
+
+  const getOrdersByArtwork = useCallback((artworkId: string) => {
+    return productionOrders.filter(o => o.artworkId === artworkId);
+  }, [productionOrders]);
+
+  // ── Internal Manufacturing ──
+  const addInternalManufacturing = useCallback(async (m: Omit<InternalManufacturing, 'id' | 'createdAt'>) => {
+    const newM: InternalManufacturing = { ...m, id: Date.now().toString(), createdAt: new Date().toISOString() };
+    const updated = [newM, ...internalManufacturing];
+    setInternalManufacturing(updated); await saveInternalManufacturing(updated);
+  }, [internalManufacturing]);
+
+  const updateInternalManufacturing = useCallback(async (id: string, m: Partial<InternalManufacturing>) => {
+    const updated = internalManufacturing.map(x => x.id === id ? { ...x, ...m } : x);
+    setInternalManufacturing(updated); await saveInternalManufacturing(updated);
+  }, [internalManufacturing]);
+
+  const deleteInternalManufacturing = useCallback(async (id: string) => {
+    const updated = internalManufacturing.filter(x => x.id !== id);
+    setInternalManufacturing(updated); await saveInternalManufacturing(updated);
+  }, [internalManufacturing]);
+
+  // ── External Manufacturing ──
+  const addExternalManufacturing = useCallback(async (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => {
+    const newM: ExternalManufacturing = { ...m, id: Date.now().toString(), createdAt: new Date().toISOString() };
+    const updated = [newM, ...externalManufacturing];
+    setExternalManufacturing(updated); await saveExternalManufacturing(updated);
+  }, [externalManufacturing]);
+
+  const updateExternalManufacturing = useCallback(async (id: string, m: Partial<ExternalManufacturing>) => {
+    const updated = externalManufacturing.map(x => x.id === id ? { ...x, ...m } : x);
+    setExternalManufacturing(updated); await saveExternalManufacturing(updated);
+  }, [externalManufacturing]);
+
+  const deleteExternalManufacturing = useCallback(async (id: string) => {
+    const updated = externalManufacturing.filter(x => x.id !== id);
+    setExternalManufacturing(updated); await saveExternalManufacturing(updated);
+  }, [externalManufacturing]);
+
   // ── Backup ──
   const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => {
     setArtworks(data.artworks); setCustomers(data.customers); setQuotes(data.quotes);
@@ -501,6 +840,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       artworks, customers, quotes, materials, loading, artworkCategories,
       suppliers, fullMaterials, artworkCosts,
+      workers, productionOrders, internalManufacturing, externalManufacturing,
       addArtwork, updateArtwork, deleteArtwork,
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote, deleteQuote,
@@ -509,6 +849,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addSupplier, updateSupplier, deleteSupplier,
       addFullMaterial, updateFullMaterial, deleteFullMaterial, updateMaterialPrice,
       addArtworkCost, updateArtworkCost, deleteArtworkCost, getArtworkCosts, getLatestCost,
+      addWorker, updateWorker, deleteWorker,
+      addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
+      addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
+      addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
       restoreBackup,
     }}>
       {children}

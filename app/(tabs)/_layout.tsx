@@ -74,6 +74,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => <MaterialIcons name="people-outline" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="manufacturing"
+        options={{
+          title: 'التصنيع',
+          tabBarIcon: ({ color, size }) => <MaterialIcons name="precision-manufacturing" size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
