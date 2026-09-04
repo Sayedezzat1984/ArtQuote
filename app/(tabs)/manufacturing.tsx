@@ -553,21 +553,7 @@ function OrderCard({ order, onEdit, onDelete, onStatusChange }: {
       {(order.startDate || order.deliveryDate) ? (
         <View style={oc.dates}>
           {order.startDate ? <Text style={oc.date}>بدء: {new Date(order.startDate).toLocaleDateString('ar-EG')}</Text> : null}
-          {order.deliveryDate ? (() => {
-            const delivery = new Date(order.deliveryDate);
-            const now2 = new Date();
-            const diffDays = Math.ceil((delivery.getTime() - now2.getTime()) / (1000 * 60 * 60 * 24));
-            const isUrgent = !['delivered','cancelled'].includes(order.status) && diffDays <= 3;
-            return (
-              <View style={[oc.deliveryChip, isUrgent && { backgroundColor: (diffDays < 0 ? Colors.errorSurface : Colors.warningSurface) }]}>
-                {isUrgent ? <MaterialIcons name={diffDays < 0 ? 'error' : 'warning'} size={12} color={diffDays < 0 ? Colors.error : Colors.warning} /> : null}
-                <Text style={[oc.date, isUrgent && { color: diffDays < 0 ? Colors.error : Colors.warning, fontWeight: '700' }]}>
-                  تسليم: {delivery.toLocaleDateString('ar-EG')}
-                  {isUrgent ? (diffDays < 0 ? ` (متأخر ${Math.abs(diffDays)} يوم)` : diffDays === 0 ? ' (اليوم!)' : ` (خلال ${diffDays} أيام)`) : ''}
-                </Text>
-              </View>
-            );
-          })() : null}
+          {order.deliveryDate ? <Text style={oc.date}>تسليم: {new Date(order.deliveryDate).toLocaleDateString('ar-EG')}</Text> : null}
         </View>
       ) : null}
 
@@ -601,9 +587,8 @@ const oc = StyleSheet.create({
   progressBar: { flex: 1, height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
   progressPct: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, minWidth: 36 },
-  dates: { flexDirection: 'row', gap: Spacing.base, marginBottom: Spacing.sm, justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' },
+  dates: { flexDirection: 'row', gap: Spacing.base, marginBottom: Spacing.sm, justifyContent: 'flex-end' },
   date: { fontSize: FontSize.xs, color: Colors.textMuted },
-  deliveryChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.sm },
   statusScroll: { marginTop: Spacing.xs },
   statusChip: { paddingHorizontal: Spacing.sm, paddingVertical: 5, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border },
   statusChipTxt: { fontSize: 10, color: Colors.textSecondary },
@@ -687,27 +672,6 @@ export default function ManufacturingScreen() {
   const activeOrders = productionOrders.filter(o => !['delivered', 'cancelled'].includes(o.status));
   const totalMfgCost = externalManufacturing.reduce((s, m) => s + m.total, 0);
   const totalLaborWage = workers.reduce((s, w) => s + w.dailyWage, 0);
-
-  const now = new Date();
-  const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-
-  const urgentOrders = useMemo(() => productionOrders.filter(o => {
-    if (!o.deliveryDate) return false;
-    if (['delivered', 'cancelled'].includes(o.status)) return false;
-    const delivery = new Date(o.deliveryDate);
-    return delivery <= in3Days;
-  }).sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime()),
-  [productionOrders]);
-
-  function getDeliveryStatus(deliveryDate: string) {
-    const delivery = new Date(deliveryDate);
-    const diffMs = delivery.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return { label: `متأخر ${Math.abs(diffDays)} يوم`, color: Colors.error, icon: 'error' as const };
-    if (diffDays === 0) return { label: 'اليوم!', color: Colors.error, icon: 'warning' as const };
-    if (diffDays === 1) return { label: 'غداً', color: Colors.warning, icon: 'warning' as const };
-    return { label: `خلال ${diffDays} أيام`, color: Colors.warning, icon: 'schedule' as const };
-  }
 
   const filteredOrders = useMemo(() => productionOrders.filter(o => {
     const matchSearch = !search || o.artworkTitle.includes(search) || o.orderNumber.includes(search) || o.customerName?.includes(search);
@@ -803,38 +767,6 @@ export default function ManufacturingScreen() {
             <MaterialIcons name="lock" size={14} color={Colors.warning} />
             <Text style={styles.adminBannerTxt}>قسم خاص — للمشرف فقط</Text>
           </View>
-
-          {/* Urgent Orders Alert */}
-          {urgentOrders.length > 0 ? (
-            <View style={styles.urgentBox}>
-              <View style={styles.urgentHeader}>
-                <View style={styles.urgentBadge}>
-                  <Text style={styles.urgentBadgeTxt}>{urgentOrders.length}</Text>
-                </View>
-                <Text style={styles.urgentTitle}>أوامر تحتاج انتباهاً عاجلاً</Text>
-                <MaterialIcons name="notifications-active" size={20} color={Colors.error} />
-              </View>
-              {urgentOrders.map(o => {
-                const si = statusInfo(o.status);
-                const ds = getDeliveryStatus(o.deliveryDate);
-                return (
-                  <Pressable key={o.id} onPress={() => setSection('orders')} style={styles.urgentRow}>
-                    <View style={[styles.urgentDelivery, { backgroundColor: ds.color + '20' }]}>
-                      <MaterialIcons name={ds.icon} size={14} color={ds.color} />
-                      <Text style={[styles.urgentDeliveryTxt, { color: ds.color }]}>{ds.label}</Text>
-                    </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end', paddingHorizontal: Spacing.sm }}>
-                      <Text style={styles.urgentOrderTitle} numberOfLines={1}>{o.artworkTitle}</Text>
-                      <Text style={styles.urgentOrderMeta}>{o.orderNumber}{o.customerName ? ` · ${o.customerName}` : ''}</Text>
-                    </View>
-                    <View style={[styles.urgentStatusBadge, { backgroundColor: si.color + '20', borderColor: si.color + '60' }]}>
-                      <Text style={[styles.urgentStatusTxt, { color: si.color }]}>{si.label}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
 
           {/* Stats grid */}
           <View style={styles.statsGrid}>
@@ -1128,19 +1060,7 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
   filterChipTxt: { fontSize: FontSize.xs, color: Colors.textSecondary },
   filterChipTxtActive: { color: Colors.primary, fontWeight: FontWeight.semibold },
-  // Urgent orders
-  urgentBox: { backgroundColor: Colors.errorSurface, borderRadius: Radius.lg, padding: Spacing.base, marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.error + '40' },
-  urgentHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
-  urgentTitle: { flex: 1, fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.error, textAlign: 'right' },
-  urgentBadge: { minWidth: 24, height: 24, borderRadius: 12, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  urgentBadgeTxt: { fontSize: FontSize.xs, color: '#fff', fontWeight: FontWeight.bold },
-  urgentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm, borderWidth: 1, borderColor: Colors.error + '30' },
-  urgentDelivery: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, flexDirection: 'row', alignItems: 'center', gap: 3, minWidth: 80, justifyContent: 'center' },
-  urgentDeliveryTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
-  urgentOrderTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  urgentOrderMeta: { fontSize: FontSize.xs, color: Colors.textMuted },
-  urgentStatusBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
-  urgentStatusTxt: { fontSize: 10, fontWeight: FontWeight.bold },
+  // External summary
   extSummary: { flexDirection: 'row', gap: Spacing.md, padding: pagePadding, paddingBottom: Spacing.sm },
   extSumCard: { flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
   extSumVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
