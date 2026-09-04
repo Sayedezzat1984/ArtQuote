@@ -13,13 +13,13 @@ import { Quote } from '@/contexts/AppContext';
 import { isTablet, pagePadding, contentMaxWidth } from '@/constants/responsive';
 
 export default function HomeScreen() {
-  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts } = useApp();
+  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts, trashArtworks, trashCustomers, trashQuotes, trashMaterials, trashSuppliers } = useApp();
   const { t, currency, lang, toggleLang } = useLanguage();
   const router = useRouter();
   const [showBackup, setShowBackup] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
 
-  const totalTrashCount = (useApp().trashArtworks?.length || 0) + (useApp().trashCustomers?.length || 0) + (useApp().trashQuotes?.length || 0) + (useApp().trashMaterials?.length || 0) + (useApp().trashSuppliers?.length || 0);
+  const totalTrashCount = (trashArtworks?.length || 0) + (trashCustomers?.length || 0) + (trashQuotes?.length || 0) + (trashMaterials?.length || 0) + (trashSuppliers?.length || 0);
   const totalRevenue = quotes.filter(q => q.status === 'accepted').reduce((s, q) => s + q.total, 0);
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
   const availableArtworks = artworks.filter(a => a.available).length;
