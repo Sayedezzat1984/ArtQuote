@@ -1,5 +1,5 @@
 // Powered by OnSpace.AI — Guest Artwork Detail
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
   Dimensions, Modal, FlatList, Linking, Alert,
@@ -11,6 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/hooks/useApp';
 import { isTablet } from '@/constants/responsive';
+import { useVisitor } from '@/contexts/VisitorContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -22,6 +23,14 @@ export default function GuestArtworkDetailScreen() {
 
   const artwork = artworks.find((a: any) => a.id === id);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const { trackArtworkView } = useVisitor();
+
+  // Track view when screen mounts
+  useEffect(() => {
+    if (artwork) {
+      trackArtworkView(artwork.id, artwork.title).catch(() => {});
+    }
+  }, [artwork?.id]);
 
   const openWhatsApp = useCallback(() => {
     const number = appSettings?.whatsappNumber?.replace(/\D/g, '') || '';

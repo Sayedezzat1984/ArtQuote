@@ -5,6 +5,7 @@ import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlertProvider } from '@/template';
 import { AppProvider } from '@/contexts/AppContext';
+import { VisitorProvider } from '@/contexts/VisitorContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AdminLoginScreen } from '@/components/feature/AdminLoginScreen';
@@ -27,13 +28,15 @@ function AppShell() {
   }
 
   if (appMode === 'client') {
-    // Guest / Visitor mode — artworks gallery only
+    // Guest / Visitor mode — artworks gallery only with visitor registration
     return (
       <LanguageProvider>
         <AppProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(guest)" />
-          </Stack>
+          <VisitorProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(guest)" />
+            </Stack>
+          </VisitorProvider>
         </AppProvider>
       </LanguageProvider>
     );
@@ -43,9 +46,11 @@ function AppShell() {
   return (
     <LanguageProvider>
       <AppProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-        </Stack>
+        <VisitorProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+          </Stack>
+        </VisitorProvider>
       </AppProvider>
     </LanguageProvider>
   );
