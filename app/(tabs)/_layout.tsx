@@ -60,6 +60,20 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => <MaterialIcons name="description" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="materials"
+        options={{
+          title: t('tabMaterials'),
+          tabBarIcon: ({ color, size }) => <MaterialIcons name="inventory-2" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="suppliers"
+        options={{
+          title: t('tabSuppliers'),
+          tabBarIcon: ({ color, size }) => <MaterialIcons name="people-outline" size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

@@ -6,6 +6,10 @@ const KEYS = {
   customers: 'customers_v1',
   quotes: 'quotes_v1',
   materials: 'materials_v1',
+  categories: 'artwork_categories_v1',
+  suppliers: 'suppliers_v1',
+  fullMaterials: 'full_materials_v1',
+  artworkCosts: 'artwork_costs_v1',
 };
 
 async function load<T>(key: string): Promise<T[]> {
@@ -27,5 +31,11 @@ export const loadQuotes = () => load<any>(KEYS.quotes);
 export const saveQuotes = (d: any[]) => save(KEYS.quotes, d);
 export const loadMaterials = () => load<any>(KEYS.materials);
 export const saveMaterials = (d: any[]) => save(KEYS.materials, d);
-export const loadCategories = () => load<any>('artwork_categories_v1');
-export const saveCategories = (d: any[]) => save('artwork_categories_v1', d);
+export const loadCategories = () => load<any>(KEYS.categories);
+export const saveCategories = (d: any[]) => save(KEYS.categories, d);
+export const loadSuppliers = () => load<any>(KEYS.suppliers);
+export const saveSuppliers = (d: any[]) => save(KEYS.suppliers, d);
+export const loadFullMaterials = () => load<any>(KEYS.fullMaterials);
+export const saveFullMaterials = (d: any[]) => save(KEYS.fullMaterials, d);
+export const loadArtworkCosts = () => load<any>(KEYS.artworkCosts);
+export const saveArtworkCosts = (d: any[]) => save(KEYS.artworkCosts, d);
