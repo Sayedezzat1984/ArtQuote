@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,7 +8,6 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useApp } from '@/hooks/useApp';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVisitor } from '@/contexts/VisitorContext';
 import { BackupModal } from '@/components/feature/BackupModal';
 import { QuoteDetailModal } from '@/components/feature/QuoteDetailModal';
 import { MigrationModal } from '@/components/feature/MigrationModal';
@@ -16,16 +15,14 @@ import { Quote } from '@/contexts/AppContext';
 import { isTablet, pagePadding, contentMaxWidth } from '@/constants/responsive';
 
 export default function HomeScreen() {
-  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts, appSettings, updateAppSettings, syncStatus, pendingOpsCount, isOnline, forceSyncNow } = useApp() as any;
+  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts } = useApp() as any;
   const { t, currency, lang, toggleLang } = useLanguage();
   const { isAdmin, signOut, appMode } = useAuth();
-  const { analytics: visitorAnalytics } = useVisitor();
   const router = useRouter();
   const [showBackup, setShowBackup] = useState(false);
   const [showMigration, setShowMigration] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
-  const [showWaSettings, setShowWaSettings] = useState(false);
-  const [waInput, setWaInput] = useState('');
+  const { syncStatus, pendingOpsCount, isOnline, forceSyncNow } = useApp() as any;
 
   const totalRevenue = quotes.filter(q => q.status === 'accepted').reduce((s, q) => s + q.total, 0);
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
@@ -283,127 +280,12 @@ export default function HomeScreen() {
             ) : null}
           </>
         )}
-        {/* Visitor Analytics — Admin only */}
-        {isAdmin && visitorAnalytics.totalVisitors > 0 ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <Pressable onPress={() => router.push('/(tabs)/visitors' as any)} style={styles.seeAllBtn}>
-                <Text style={styles.seeAll}>عرض الكل</Text>
-              </Pressable>
-              <Text style={styles.sectionTitle}>إحصائيات الزوار</Text>
-            </View>
-            <View style={styles.visitorGrid}>
-              <View style={[styles.visitorCard, { borderColor: Colors.primary + '40' }]}>
-                <View style={[styles.visitorIcon, { backgroundColor: Colors.primarySurface }]}>
-                  <MaterialIcons name="groups" size={18} color={Colors.primary} />
-                </View>
-                <Text style={[styles.visitorVal, { color: Colors.primary }]}>{visitorAnalytics.totalVisitors}</Text>
-                <Text style={styles.visitorLbl}>إجمالي الزوار</Text>
-              </View>
-              <View style={styles.visitorCard}>
-                <View style={[styles.visitorIcon, { backgroundColor: Colors.infoSurface }]}>
-                  <MaterialIcons name="today" size={18} color={Colors.info} />
-                </View>
-                <Text style={[styles.visitorVal, { color: Colors.info }]}>{visitorAnalytics.visitorsToday}</Text>
-                <Text style={styles.visitorLbl}>اليوم</Text>
-              </View>
-              <View style={styles.visitorCard}>
-                <View style={[styles.visitorIcon, { backgroundColor: Colors.successSurface }]}>
-                  <MaterialIcons name="visibility" size={18} color={Colors.success} />
-                </View>
-                <Text style={[styles.visitorVal, { color: Colors.success }]}>{visitorAnalytics.totalArtworkViews}</Text>
-                <Text style={styles.visitorLbl}>مشاهدات</Text>
-              </View>
-              <View style={styles.visitorCard}>
-                <View style={[styles.visitorIcon, { backgroundColor: Colors.warningSurface }]}>
-                  <MaterialIcons name="replay" size={18} color={Colors.warning} />
-                </View>
-                <Text style={[styles.visitorVal, { color: Colors.warning }]}>{visitorAnalytics.returningVisitors}</Text>
-                <Text style={styles.visitorLbl}>عائدون</Text>
-              </View>
-            </View>
-            {visitorAnalytics.mostViewedArtwork ? (
-              <Pressable onPress={() => router.push('/(tabs)/visitors' as any)} style={styles.topArtworkBanner}>
-                <View style={styles.topArtworkLeft}>
-                  <Text style={styles.topArtworkVal}>{visitorAnalytics.mostViewedArtwork.totalViews}</Text>
-                  <Text style={styles.topArtworkSub}>مشاهدة</Text>
-                </View>
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  <Text style={styles.topArtworkLabel}>الأكثر مشاهدةً</Text>
-                  <Text style={styles.topArtworkName} numberOfLines={1}>{visitorAnalytics.mostViewedArtwork.artworkTitle}</Text>
-                </View>
-                <MaterialIcons name="trending-up" size={22} color={Colors.primary} />
-              </Pressable>
-            ) : null}
-          </>
-        ) : null}
-
-        {/* WhatsApp Settings — Admin only */}
-        {isAdmin ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <Pressable onPress={() => { setWaInput(appSettings?.whatsappNumber || ''); setShowWaSettings(true); }} style={styles.waEditBtn}>
-                <MaterialIcons name="edit" size={14} color={Colors.success} />
-                <Text style={{ fontSize: FontSize.xs, color: Colors.success, fontWeight: FontWeight.semibold }}>تعديل</Text>
-              </Pressable>
-              <Text style={styles.sectionTitle}>إعدادات التواصل</Text>
-            </View>
-            <Pressable onPress={() => { setWaInput(appSettings?.whatsappNumber || ''); setShowWaSettings(true); }} style={styles.waCard}>
-              <View style={styles.waCardLeft}>
-                <Text style={styles.waNumber}>{appSettings?.whatsappNumber || 'لم يُحدَّد بعد'}</Text>
-                <Text style={styles.waLabel}>رقم واتساب الزوار</Text>
-              </View>
-              <View style={[styles.waIcon, { backgroundColor: '#25D36620' }]}>
-                <MaterialIcons name="chat" size={22} color="#25D366" />
-              </View>
-            </Pressable>
-          </>
-        ) : null}
-
         <View style={{ height: 20 }} />
       </ScrollView>
 
       <BackupModal visible={showBackup} onClose={() => setShowBackup(false)} />
       <MigrationModal visible={showMigration} onClose={() => setShowMigration(false)} />
       <QuoteDetailModal visible={selectedQuote !== null} quote={selectedQuote} artworks={artworks} customers={customers} onClose={() => setSelectedQuote(null)} onEdit={() => { setSelectedQuote(null); router.push('/(tabs)/quotes'); }} />
-
-      {/* WhatsApp Settings Modal */}
-      <Modal visible={showWaSettings} transparent animationType="slide" onRequestClose={() => setShowWaSettings(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.waOverlay}>
-            <View style={styles.waSheet}>
-              <View style={styles.waHandle} />
-              <View style={styles.waSheetHeader}>
-                <Pressable onPress={() => setShowWaSettings(false)} style={styles.waCloseBtn}>
-                  <MaterialIcons name="close" size={20} color={Colors.textSecondary} />
-                </Pressable>
-                <Text style={styles.waSheetTitle}>رقم واتساب الزوار</Text>
-              </View>
-              <View style={{ padding: Spacing.base }}>
-                <Text style={styles.waFieldLabel}>أدخل رقم واتساب (مع مفتاح الدولة، مثل: 201234567890)</Text>
-                <TextInput
-                  value={waInput}
-                  onChangeText={setWaInput}
-                  keyboardType="phone-pad"
-                  placeholder="201234567890"
-                  placeholderTextColor={Colors.textMuted}
-                  style={styles.waInput}
-                  textAlign="right"
-                />
-                <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.base }}>
-                  <Pressable onPress={() => setShowWaSettings(false)} style={[styles.waActionBtn, { backgroundColor: Colors.surfaceElevated, flex: 1 }]}>
-                    <Text style={{ color: Colors.textSecondary, fontWeight: '600' }}>إلغاء</Text>
-                  </Pressable>
-                  <Pressable onPress={() => { updateAppSettings({ whatsappNumber: waInput.trim() }); setShowWaSettings(false); }} style={[styles.waActionBtn, { backgroundColor: '#25D366', flex: 2 }]}>
-                    <MaterialIcons name="chat" size={16} color="#fff" />
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>حفظ الرقم</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -466,34 +348,4 @@ const styles = StyleSheet.create({
   recentTotal: { fontSize: isTablet ? FontSize.md : FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
   recentCurrency: { fontSize: FontSize.xs, color: Colors.textMuted },
   availableDot: { width: 10, height: 10, borderRadius: 5 },
-  // WhatsApp settings
-  waEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: Colors.successSurface, borderWidth: 1, borderColor: Colors.success + '50' },
-  waCard: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.base, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#25D36630', marginBottom: Spacing.xl },
-  waCardLeft: { flex: 1, alignItems: 'flex-end' },
-  waIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  waNumber: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  waLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  // WA Modal
-  waOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  waSheet: { backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xxl, borderTopRightRadius: Radius.xxl, paddingBottom: 24 },
-  waHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginTop: Spacing.md },
-  waSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  waSheetTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  waCloseBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-  waFieldLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm },
-  waInput: { backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, padding: Spacing.md, fontSize: FontSize.base, color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
-  waActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.md, borderRadius: Radius.md },
-  // Visitor analytics
-  seeAllBtn: { paddingHorizontal: Spacing.sm },
-  visitorGrid: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md, flexWrap: 'wrap' },
-  visitorCard: { flex: 1, minWidth: '20%', backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
-  visitorIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
-  visitorVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
-  visitorLbl: { fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
-  topArtworkBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.primarySurface, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.primary + '40' },
-  topArtworkLeft: { alignItems: 'center', backgroundColor: Colors.primary + '15', borderRadius: Radius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md },
-  topArtworkVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary },
-  topArtworkSub: { fontSize: 9, color: Colors.primary },
-  topArtworkLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.medium },
-  topArtworkName: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
 });

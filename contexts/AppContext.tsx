@@ -10,7 +10,7 @@ import { COLLECTIONS } from '@/services/firebase';
 import {
   loadArtworks, saveArtworks, loadCustomers, saveCustomers,
   loadQuotes, saveQuotes, loadMaterials, saveMaterials,
-  loadCategories, saveCategories as saveCategoriesLocal, loadSuppliers, saveSuppliers,
+  loadCategories, saveCategories, loadSuppliers, saveSuppliers,
   loadFullMaterials, saveFullMaterials, loadArtworkCosts, saveArtworkCosts,
   loadWorkers, saveWorkers, loadProductionOrders, saveProductionOrders,
   loadInternalManufacturing, saveInternalManufacturing,
@@ -38,7 +38,6 @@ export interface Artwork {
   year: string;
   available: boolean;
   showPriceToCustomer: boolean;
-  visibleToVisitors: boolean;
   image: string | null;
   images: string[];
   materialIds: string[];
@@ -370,7 +369,6 @@ export interface ArtworkCostSheet {
   deliveryCost: number;
   installationPriceCost: number;
   showPriceToCustomer: boolean;
-  visibleToVisitors: boolean;
   notes: string;
   createdAt: string;
 }
@@ -416,12 +414,6 @@ export interface Quote {
   validUntil: string;
 }
 
-// ─── App Settings ──────────────────────────────────────────────────────────
-export interface AppSettings {
-  whatsappNumber: string;
-  [key: string]: any;
-}
-
 // ─── Context type ──────────────────────────────────────────────────────────
 interface AppContextType {
   artworks: Artwork[];
@@ -429,12 +421,9 @@ interface AppContextType {
   quotes: Quote[];
   materials: Material[];
   loading: boolean;
-  /** True once Firestore has delivered its first artworks snapshot (guest-safe) */
-  artworksReady: boolean;
   syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
   pendingOpsCount: number;
   isOnline: boolean;
-  appSettings: AppSettings;
   artworkCategories: ArtworkCategory[];
   suppliers: Supplier[];
   fullMaterials: FullMaterial[];
@@ -446,8 +435,6 @@ interface AppContextType {
   addArtwork: (a: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
   updateArtwork: (id: string, a: Partial<Artwork>) => Promise<void>;
   deleteArtwork: (id: string) => Promise<void>;
-  /** Force-sync a single artwork to the published_artworks mirror */
-  syncArtworkToPublic: (artwork: Artwork) => Promise<void>;
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => Promise<void>;
   updateCustomer: (id: string, c: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -484,12 +471,9 @@ interface AppContextType {
   addExternalManufacturing: (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
   updateExternalManufacturing: (id: string, m: Partial<ExternalManufacturing>) => Promise<void>;
   deleteExternalManufacturing: (id: string) => Promise<void>;
-  updateAppSettings: (s: Partial<AppSettings>) => Promise<void>;
   restoreBackup: (data: Record<string, any[]>) => Promise<void>;
   migrateLocalToFirestore: () => Promise<{ migrated: number; skipped: number }>;
   forceSyncNow: () => Promise<void>;
-  /** Immediately fetch artworks from Firestore and update state — for guest cold-start */
-  syncGuestGallery: () => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -532,11 +516,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [internalManufacturing, setInternalManufacturing] = useState<InternalManufacturing[]>([]);
   const [externalManufacturing, setExternalManufacturing] = useState<ExternalManufacturing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [artworksReady, setArtworksReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline' | 'error'>('idle');
   const [pendingOpsCount, setPendingOpsCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ whatsappNumber: '' });
 
   const unsubsRef = useRef<(() => void)[]>([]);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -569,11 +551,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     setSyncStatus('syncing');
 
-    // Load local cache first (including settings)
+    // Load local cache first for instant display
     loadFromLocal().then(() => {
       if (mounted) setLoading(false);
     });
 
+    // Subscribe to all Firestore collections in parallel
     const subs: (() => void)[] = [];
 
     const setupListener = (col: string, setter: (d: any[]) => void) => {
@@ -588,27 +571,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return unsub;
     };
 
-    // Artworks: mark ready on first snapshot so guest gallery doesn't show empty state
-    const artworkUnsub = listenCollection(
-      COLLECTIONS.artworks,
-      d => {
-        if (mounted) {
-          setArtworks(d as Artwork[]);
-          setArtworksReady(true);
-          setSyncStatus('synced');
-        }
-      },
-      () => {
-        if (mounted) {
-          // Mark ready even on error so we fall back to cache gracefully
-          setArtworksReady(true);
-          setSyncStatus('offline');
-        }
-      },
-    );
-    subs.push(artworkUnsub);
-    subs.push(setupListener(COLLECTIONS.customers, setCustomers as any));
-    subs.push(setupListener(COLLECTIONS.quotes, setQuotes as any));
+    subs.push(setupListener(COLLECTIONS.artworks, setArtworks));
+    subs.push(setupListener(COLLECTIONS.customers, setCustomers));
+    subs.push(setupListener(COLLECTIONS.quotes, setQuotes));
     subs.push(setupListener(COLLECTIONS.fullMaterials, setFullMaterials));
     subs.push(setupListener(COLLECTIONS.suppliers, setSuppliers));
     subs.push(setupListener(COLLECTIONS.artworkCosts, setArtworkCosts));
@@ -617,23 +582,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     subs.push(setupListener(COLLECTIONS.internalManufacturing, setInternalManufacturing));
     subs.push(setupListener(COLLECTIONS.externalManufacturing, setExternalManufacturing));
 
-    // App settings listener
-    subs.push(listenCollection('appSettings', d => {
-      if (!mounted) return;
-      if (d.length > 0) {
-        const merged: AppSettings = { whatsappNumber: '' };
-        d.forEach((item: any) => { Object.assign(merged, item); });
-        setAppSettings(merged);
-      }
-    }, () => {}));
-
     // Categories with default seed — ONLY if Firestore has zero categories
     subs.push(listenCollection(COLLECTIONS.categories, d => {
       if (!mounted) return;
       if (d.length > 0) {
+        // Firestore has existing categories — use them as-is, never overwrite
         setArtworkCategories(d as ArtworkCategory[]);
       } else {
+        // No categories in Firestore at all — seed defaults once
         setArtworkCategories(DEFAULT_CATEGORIES);
+        // Only write if absolutely empty (prevents overwriting on reconnect)
         fetchOnce(COLLECTIONS.categories).then(existing => {
           if (existing.length === 0) {
             DEFAULT_CATEGORIES.forEach(c => upsertDocSilent(COLLECTIONS.categories, c.id, c));
@@ -647,10 +605,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     unsubsRef.current = subs;
 
+    // Mark loaded after timeout
     loadingTimer.current = setTimeout(() => {
       if (mounted) setLoading(false);
     }, 2000);
 
+    // Flush any pending ops
     flushQueue().then(() => refreshPendingCount());
 
     return () => {
@@ -668,7 +628,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadCategories(), loadSuppliers(), loadFullMaterials(), loadArtworkCosts(),
         loadWorkers(), loadProductionOrders(), loadInternalManufacturing(), loadExternalManufacturing(),
       ]);
-      setArtworks(prev => { if (prev.length) return prev; if (a.length) setArtworksReady(true); return a; });
+      setArtworks(prev => prev.length ? prev : a);
       setCustomers(prev => prev.length ? prev : c);
       setQuotes(prev => prev.length ? prev : q);
       setMaterials(m);
@@ -680,14 +640,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setInternalManufacturing(prev => prev.length ? prev : intm);
       setExternalManufacturing(prev => prev.length ? prev : extm);
       setArtworkCategories(prev => prev.length ? prev : (cats.length > 0 ? cats : DEFAULT_CATEGORIES));
-      // Load settings from AsyncStorage
-      try {
-        const raw = await AsyncStorage.getItem('appSettings');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          setAppSettings(prev => ({ whatsappNumber: '', ...prev, ...parsed }));
-        }
-      } catch {}
     } catch {}
   }
 
@@ -712,38 +664,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSyncStatus('error');
     }
   }, [refreshPendingCount]);
-
-  // ─── Guest gallery sync: one-shot Firestore fetch for immediate cold-start ──
-  const syncGuestGallery = useCallback(async () => {
-    try {
-      setSyncStatus('syncing');
-      const [freshArtworks, freshCats, freshSettings] = await Promise.all([
-        fetchOnce(COLLECTIONS.artworks),
-        fetchOnce(COLLECTIONS.categories),
-        fetchOnce('appSettings'),
-      ]);
-      if (freshArtworks.length > 0) {
-        setArtworks(freshArtworks as Artwork[]);
-        setArtworksReady(true);
-        // Update cache
-        saveArtworks(freshArtworks as Artwork[]).catch(() => {});
-      }
-      if (freshCats.length > 0) {
-        setArtworkCategories(freshCats as ArtworkCategory[]);
-        saveCategoriesLocal(freshCats as ArtworkCategory[]).catch(() => {});
-      }
-      if (freshSettings.length > 0) {
-        const merged: AppSettings = { whatsappNumber: '' };
-        freshSettings.forEach((item: any) => { Object.assign(merged, item); });
-        setAppSettings(merged);
-        try { await AsyncStorage.setItem('appSettings', JSON.stringify(merged)); } catch {}
-      }
-      setSyncStatus('synced');
-    } catch {
-      setSyncStatus('offline');
-      // Silently fall back to whatever is in state from cache
-    }
-  }, []);
 
   // ─── Migration: local AsyncStorage → Firestore ────────────────────────────
   const migrateLocalToFirestore = useCallback(async (): Promise<{ migrated: number; skipped: number }> => {
@@ -786,68 +706,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     else setSyncStatus('offline');
   }
 
-  // ─── App Settings ──────────────────────────────────────────────────────────
-  const updateAppSettings = useCallback(async (s: Partial<AppSettings>) => {
-    const updated = { ...appSettings, ...s };
-    setAppSettings(updated);
-    await upsertDocSilent('appSettings', 'main', { ...updated, id: 'main' });
-    try {
-      await AsyncStorage.setItem('appSettings', JSON.stringify(updated));
-    } catch {}
-  }, [appSettings]);
-
-  // ─── Build public mirror record (public-safe fields only) ────────────────
-  function buildPublicRecord(artwork: Artwork): Record<string, any> {
-    return {
-      id: artwork.id,
-      artworkId: artwork.id,
-      title: artwork.title,
-      description: artwork.description,
-      category: artwork.category,
-      mainImage: artwork.image ?? null,
-      images: artwork.images ?? [],
-      height: artwork.height ?? '',
-      width: artwork.width ?? '',
-      depth: artwork.depth ?? '',
-      length: artwork.length ?? '',
-      diameter: artwork.diameter ?? '',
-      thickness: artwork.thickness ?? '',
-      weight: artwork.weight ?? '',
-      weightUnit: artwork.weightUnit ?? 'kg',
-      dimensionUnit: artwork.dimensionUnit ?? 'cm',
-      dimensions: artwork.dimensions ?? '',
-      quantity: artwork.quantity ?? '',
-      year: artwork.year ?? '',
-      available: artwork.available ?? true,
-      isPublished: artwork.visibleToVisitors === true,
-      materialNames: [], // names resolved separately if needed
-      createdAt: artwork.createdAt,
-      updatedAt: artwork.updatedAt ?? artwork.createdAt,
-    };
-  }
-
-  // ─── Sync single artwork to published_artworks mirror ─────────────────────
-  const syncArtworkToPublic = useCallback(async (artwork: Artwork) => {
-    try {
-      if (artwork.visibleToVisitors === true) {
-        await upsertDocSilent(COLLECTIONS.publishedArtworks, artwork.id, buildPublicRecord(artwork));
-      } else {
-        await removeDoc(COLLECTIONS.publishedArtworks, artwork.id);
-      }
-    } catch {}
-  }, []);
-
   // ─── Artwork CRUD ──────────────────────────────────────────────────────────
   const addArtwork = useCallback(async (artwork: Omit<Artwork, 'id' | 'createdAt'>) => {
     const now = new Date().toISOString();
     const newItem: Artwork = { ...artwork, id: uid(), createdAt: now, updatedAt: now };
     markSyncing();
     await upsertDocSilent(COLLECTIONS.artworks, newItem.id, newItem);
-    // Mirror to published_artworks
-    syncArtworkToPublic(newItem).catch(() => {});
     setSyncStatus(getIsOnline() ? 'synced' : 'offline');
     await refreshPendingCount();
-  }, [refreshPendingCount, syncArtworkToPublic]);
+  }, [refreshPendingCount]);
 
   const updateArtwork = useCallback(async (id: string, artwork: Partial<Artwork>) => {
     const existing = artworks.find(a => a.id === id);
@@ -855,17 +722,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updated = { ...existing, ...artwork, updatedAt: new Date().toISOString() };
     markSyncing();
     await upsertDocSilent(COLLECTIONS.artworks, id, updated);
-    // Mirror to published_artworks
-    syncArtworkToPublic(updated).catch(() => {});
     setSyncStatus(getIsOnline() ? 'synced' : 'offline');
     await refreshPendingCount();
-  }, [artworks, refreshPendingCount, syncArtworkToPublic]);
+  }, [artworks, refreshPendingCount]);
 
   const deleteArtwork = useCallback(async (id: string) => {
     markSyncing();
     await removeDoc(COLLECTIONS.artworks, id);
-    // Also remove from published_artworks mirror
-    removeDoc(COLLECTIONS.publishedArtworks, id).catch(() => {});
     setSyncStatus(getIsOnline() ? 'synced' : 'offline');
     await refreshPendingCount();
   }, [refreshPendingCount]);
@@ -1181,11 +1044,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      artworks, customers, quotes, materials, loading, artworksReady, syncStatus,
-      pendingOpsCount, isOnline, appSettings,
+      artworks, customers, quotes, materials, loading, syncStatus,
+      pendingOpsCount, isOnline,
       artworkCategories, suppliers, fullMaterials, artworkCosts,
       workers, productionOrders, internalManufacturing, externalManufacturing,
-      addArtwork, updateArtwork, deleteArtwork, syncArtworkToPublic,
+      addArtwork, updateArtwork, deleteArtwork,
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote, deleteQuote,
       addMaterial, updateMaterial, deleteMaterial,
@@ -1197,7 +1060,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
       addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
       addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
-      updateAppSettings, restoreBackup, migrateLocalToFirestore, forceSyncNow, syncGuestGallery, syncArtworkToPublic,
+      restoreBackup, migrateLocalToFirestore, forceSyncNow,
     }}>
       {children}
     </AppContext.Provider>
