@@ -10,11 +10,13 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { QuoteCard, QuoteFormModal, QuoteDetailModal, EmptyState } from '@/components';
 import { Quote } from '@/contexts/AppContext';
 import { isTablet, pagePadding } from '@/constants/responsive';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function QuotesScreen() {
   const { quotes, customers, artworks, addQuote, updateQuote, deleteQuote } = useApp();
   const { showAlert } = useAlert();
   const { t, currency } = useLanguage();
+  const { isAdmin } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [detailQuote, setDetailQuote] = useState<Quote | null>(null);
@@ -55,11 +57,23 @@ export default function QuotesScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditingQuote(null); setShowForm(true); }} style={styles.addBtn}>
-          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-        </Pressable>
+        {isAdmin ? (
+          <Pressable onPress={() => { setEditingQuote(null); setShowForm(true); }} style={styles.addBtn}>
+            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+          </Pressable>
+        ) : (
+          <View style={[styles.addBtn, { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="lock" size={18} color={Colors.textMuted} />
+          </View>
+        )}
         <Text style={styles.title}>{t('priceQuotes')}</Text>
       </View>
+      {!isAdmin ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.infoSurface, paddingHorizontal: pagePadding, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.info + '30', justifyContent: 'center' }}>
+          <MaterialIcons name="visibility" size={14} color={Colors.info} />
+          <Text style={{ fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.medium }}>وضع العرض فقط — عروض الأسعار خاصة بالمشرف</Text>
+        </View>
+      ) : null}
 
       {/* Revenue Summary */}
       <View style={styles.summaryRow}>
@@ -128,37 +142,41 @@ export default function QuotesScreen() {
               <QuoteCard
                 quote={item}
                 onPress={() => setDetailQuote(item)}
-                onEdit={() => handleEdit(item)}
-                onDelete={() => handleDelete(item)}
+                onEdit={isAdmin ? () => handleEdit(item) : undefined}
+                onDelete={isAdmin ? () => handleDelete(item) : undefined}
               />
             </Pressable>
-            {/* Quick status chips */}
-            <View style={styles.quickStatusRow}>
-              {(['draft', 'sent', 'accepted', 'rejected'] as Quote['status'][]).filter(s => s !== item.status).map(s => {
-                const labels: Record<Quote['status'], string> = { draft: t('statusDraft'), sent: t('statusSent'), accepted: t('statusAccepted'), rejected: t('statusRejected') };
-                return (
-                  <Pressable key={s} onPress={() => updateQuote(item.id, { status: s })} style={styles.quickStatusBtn}>
-                    <Text style={styles.quickStatusText}>{labels[s]}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {/* Quick status chips — Admin only */}
+            {isAdmin ? (
+              <View style={styles.quickStatusRow}>
+                {(['draft', 'sent', 'accepted', 'rejected'] as Quote['status'][]).filter(s => s !== item.status).map(s => {
+                  const labels: Record<Quote['status'], string> = { draft: t('statusDraft'), sent: t('statusSent'), accepted: t('statusAccepted'), rejected: t('statusRejected') };
+                  return (
+                    <Pressable key={s} onPress={() => updateQuote(item.id, { status: s })} style={styles.quickStatusBtn}>
+                      <Text style={styles.quickStatusText}>{labels[s]}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
         )}
       />
 
-      <QuoteFormModal
-        visible={showForm}
-        quote={editingQuote}
-        customers={customers}
-        artworks={artworks}
-        onSave={data => {
-          if (editingQuote) updateQuote(editingQuote.id, data);
-          else addQuote(data);
-          setShowForm(false); setEditingQuote(null);
-        }}
-        onClose={() => { setShowForm(false); setEditingQuote(null); }}
-      />
+      {isAdmin ? (
+        <QuoteFormModal
+          visible={showForm}
+          quote={editingQuote}
+          customers={customers}
+          artworks={artworks}
+          onSave={data => {
+            if (editingQuote) updateQuote(editingQuote.id, data);
+            else addQuote(data);
+            setShowForm(false); setEditingQuote(null);
+          }}
+          onClose={() => { setShowForm(false); setEditingQuote(null); }}
+        />
+      ) : null}
 
       <QuoteDetailModal
         visible={detailQuote !== null}
@@ -166,8 +184,8 @@ export default function QuotesScreen() {
         artworks={artworks}
         customers={customers}
         onClose={() => setDetailQuote(null)}
-        onEdit={() => detailQuote && handleEdit(detailQuote)}
-        onDelete={() => detailQuote && handleDelete(detailQuote)}
+        onEdit={isAdmin ? () => detailQuote && handleEdit(detailQuote) : undefined}
+        onDelete={isAdmin ? () => detailQuote && handleDelete(detailQuote) : undefined}
       />
     </SafeAreaView>
   );

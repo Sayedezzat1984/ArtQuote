@@ -11,6 +11,7 @@ import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { isTablet, pagePadding } from '@/constants/responsive';
 import { Supplier } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 const SCREEN_H = Dimensions.get('window').height;
 
@@ -342,6 +343,7 @@ const sc = StyleSheet.create({
 export default function SuppliersScreen() {
   const { suppliers, fullMaterials, addSupplier, updateSupplier, deleteSupplier } = useApp();
   const { showAlert } = useAlert();
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -365,11 +367,23 @@ export default function SuppliersScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditingSupplier(null); setShowForm(true); }} style={styles.addBtn}>
-          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-        </Pressable>
+        {isAdmin ? (
+          <Pressable onPress={() => { setEditingSupplier(null); setShowForm(true); }} style={styles.addBtn}>
+            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+          </Pressable>
+        ) : (
+          <View style={[styles.addBtn, { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="lock" size={18} color={Colors.textMuted} />
+          </View>
+        )}
         <Text style={styles.title}>سجل الموردين</Text>
       </View>
+      {!isAdmin ? (
+        <View style={styles.guestBanner}>
+          <MaterialIcons name="visibility" size={14} color={Colors.info} />
+          <Text style={styles.guestBannerText}>وضع العرض فقط — التعديلات متاحة للمشرف</Text>
+        </View>
+      ) : null}
 
       {/* Stats */}
       <View style={styles.statsRow}>
@@ -415,29 +429,33 @@ export default function SuppliersScreen() {
             <SupplierCard
               supplier={item}
               materialsCount={getMaterialsCount(item.id)}
-              onPress={() => setDetailSupplier(item)}
+              onPress={isAdmin ? () => setDetailSupplier(item) : undefined}
             />
           </View>
         )}
       />
 
-      <SupplierFormModal
-        visible={showForm} supplier={editingSupplier}
-        onSave={data => {
-          if (editingSupplier) updateSupplier(editingSupplier.id, data);
-          else addSupplier(data);
-          setShowForm(false); setEditingSupplier(null);
-        }}
-        onClose={() => { setShowForm(false); setEditingSupplier(null); }}
-      />
+      {isAdmin ? (
+        <SupplierFormModal
+          visible={showForm} supplier={editingSupplier}
+          onSave={data => {
+            if (editingSupplier) updateSupplier(editingSupplier.id, data);
+            else addSupplier(data);
+            setShowForm(false); setEditingSupplier(null);
+          }}
+          onClose={() => { setShowForm(false); setEditingSupplier(null); }}
+        />
+      ) : null}
 
-      <SupplierDetailModal
-        visible={detailSupplier !== null} supplier={detailSupplier}
-        materials={fullMaterials}
-        onEdit={() => { setEditingSupplier(detailSupplier); setDetailSupplier(null); setShowForm(true); }}
-        onDelete={() => detailSupplier && handleDelete(detailSupplier)}
-        onClose={() => setDetailSupplier(null)}
-      />
+      {isAdmin ? (
+        <SupplierDetailModal
+          visible={detailSupplier !== null} supplier={detailSupplier}
+          materials={fullMaterials}
+          onEdit={() => { setEditingSupplier(detailSupplier); setDetailSupplier(null); setShowForm(true); }}
+          onDelete={() => detailSupplier && handleDelete(detailSupplier)}
+          onClose={() => setDetailSupplier(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -454,4 +472,6 @@ const styles = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, paddingHorizontal: Spacing.md, margin: pagePadding, marginBottom: Spacing.sm, borderWidth: 1, borderColor: Colors.border },
   searchInput: { flex: 1, paddingVertical: Spacing.md, fontSize: FontSize.base, color: Colors.textPrimary, marginRight: Spacing.sm },
   list: { padding: pagePadding, paddingTop: Spacing.sm },
+  guestBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.infoSurface, paddingHorizontal: pagePadding, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.info + '30', justifyContent: 'center' },
+  guestBannerText: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.medium },
 });

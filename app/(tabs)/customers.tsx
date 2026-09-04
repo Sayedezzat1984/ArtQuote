@@ -10,11 +10,13 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { CustomerCard, CustomerFormModal, QuoteFormModal, EmptyState } from '@/components';
 import { Customer } from '@/contexts/AppContext';
 import { isTablet, pagePadding } from '@/constants/responsive';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function CustomersScreen() {
   const { customers, artworks, quotes, addCustomer, updateCustomer, deleteCustomer, addQuote } = useApp();
   const { showAlert } = useAlert();
   const { t } = useLanguage();
+  const { isAdmin } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -42,11 +44,23 @@ export default function CustomersScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditingCustomer(null); setShowForm(true); }} style={styles.addBtn}>
-          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-        </Pressable>
+        {isAdmin ? (
+          <Pressable onPress={() => { setEditingCustomer(null); setShowForm(true); }} style={styles.addBtn}>
+            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+          </Pressable>
+        ) : (
+          <View style={[styles.addBtn, { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="lock" size={18} color={Colors.textMuted} />
+          </View>
+        )}
         <Text style={styles.title}>{t('customerDatabase')}</Text>
       </View>
+      {!isAdmin ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.infoSurface, paddingHorizontal: pagePadding, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.info + '30', justifyContent: 'center' }}>
+          <MaterialIcons name="visibility" size={14} color={Colors.info} />
+          <Text style={{ fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.medium }}>وضع العرض فقط — بيانات العملاء خاصة بالمشرف</Text>
+        </View>
+      ) : null}
 
       <View style={styles.searchBar}>
         <MaterialIcons name="search" size={20} color={Colors.textMuted} />
@@ -93,33 +107,37 @@ export default function CustomersScreen() {
             <CustomerCard
               customer={item}
               quotesCount={getQuotesCount(item.id)}
-              onEdit={() => handleEdit(item)}
-              onDelete={() => handleDelete(item)}
-              onNewQuote={() => handleNewQuote(item)}
+              onEdit={isAdmin ? () => handleEdit(item) : undefined}
+              onDelete={isAdmin ? () => handleDelete(item) : undefined}
+              onNewQuote={isAdmin ? () => handleNewQuote(item) : undefined}
             />
           </View>
         )}
       />
 
-      <CustomerFormModal
-        visible={showForm}
-        customer={editingCustomer}
-        onSave={data => {
-          if (editingCustomer) updateCustomer(editingCustomer.id, data);
-          else addCustomer(data);
-          setShowForm(false); setEditingCustomer(null);
-        }}
-        onClose={() => { setShowForm(false); setEditingCustomer(null); }}
-      />
+      {isAdmin ? (
+        <CustomerFormModal
+          visible={showForm}
+          customer={editingCustomer}
+          onSave={data => {
+            if (editingCustomer) updateCustomer(editingCustomer.id, data);
+            else addCustomer(data);
+            setShowForm(false); setEditingCustomer(null);
+          }}
+          onClose={() => { setShowForm(false); setEditingCustomer(null); }}
+        />
+      ) : null}
 
-      <QuoteFormModal
-        visible={showQuoteForm}
-        customers={customers}
-        artworks={artworks}
-        preSelectedCustomer={quoteCustomer}
-        onSave={data => { addQuote(data); setShowQuoteForm(false); setQuoteCustomer(null); }}
-        onClose={() => { setShowQuoteForm(false); setQuoteCustomer(null); }}
-      />
+      {isAdmin ? (
+        <QuoteFormModal
+          visible={showQuoteForm}
+          customers={customers}
+          artworks={artworks}
+          preSelectedCustomer={quoteCustomer}
+          onSave={data => { addQuote(data); setShowQuoteForm(false); setQuoteCustomer(null); }}
+          onClose={() => { setShowQuoteForm(false); setQuoteCustomer(null); }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

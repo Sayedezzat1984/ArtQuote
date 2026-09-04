@@ -582,14 +582,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     subs.push(setupListener(COLLECTIONS.internalManufacturing, setInternalManufacturing));
     subs.push(setupListener(COLLECTIONS.externalManufacturing, setExternalManufacturing));
 
-    // Categories with default seed
+    // Categories with default seed — ONLY if Firestore has zero categories
     subs.push(listenCollection(COLLECTIONS.categories, d => {
       if (!mounted) return;
       if (d.length > 0) {
+        // Firestore has existing categories — use them as-is, never overwrite
         setArtworkCategories(d as ArtworkCategory[]);
       } else {
+        // No categories in Firestore at all — seed defaults once
         setArtworkCategories(DEFAULT_CATEGORIES);
-        DEFAULT_CATEGORIES.forEach(c => upsertDocSilent(COLLECTIONS.categories, c.id, c));
+        // Only write if absolutely empty (prevents overwriting on reconnect)
+        fetchOnce(COLLECTIONS.categories).then(existing => {
+          if (existing.length === 0) {
+            DEFAULT_CATEGORIES.forEach(c => upsertDocSilent(COLLECTIONS.categories, c.id, c));
+          }
+        }).catch(() => {});
       }
       setSyncStatus('synced');
     }, () => {

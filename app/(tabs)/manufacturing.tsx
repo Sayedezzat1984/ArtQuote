@@ -10,6 +10,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { isTablet, pagePadding } from '@/constants/responsive';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Worker, ProductionOrder, ProductionOrderStatus,
   DEFAULT_MANUFACTURING_STAGES, ExternalManufacturing,
@@ -653,6 +654,7 @@ export default function ManufacturingScreen() {
     addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
   } = useApp();
   const { showAlert } = useAlert();
+  const { isAdmin } = useAuth();
 
   const [section, setSection] = useState<Section>('dashboard');
   const [search, setSearch] = useState('');
@@ -719,7 +721,7 @@ export default function ManufacturingScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        {(section === 'orders' || section === 'workers' || section === 'external') ? (
+        {isAdmin && (section === 'orders' || section === 'workers' || section === 'external') ? (
           <Pressable onPress={() => {
             if (section === 'workers') { setEditingWorker(null); setShowWorkerForm(true); }
             else if (section === 'orders') { setEditingOrder(null); setShowOrderForm(true); }
@@ -727,11 +729,19 @@ export default function ManufacturingScreen() {
           }} style={styles.addBtn}>
             <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
           </Pressable>
-        ) : <View style={{ width: 40 }} />}
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
         <Text style={styles.title}>
           {SECTIONS.find(s => s.id === section)?.label || 'التصنيع'}
         </Text>
       </View>
+      {!isAdmin ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.warningSurface, paddingHorizontal: pagePadding, paddingVertical: Spacing.sm, justifyContent: 'center' }}>
+          <MaterialIcons name="lock" size={14} color={Colors.warning} />
+          <Text style={{ fontSize: FontSize.xs, color: Colors.warning, fontWeight: FontWeight.bold }}>قسم خاص — للمشرف فقط</Text>
+        </View>
+      ) : null}
 
       {/* Section Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectTabBar}>
@@ -895,9 +905,9 @@ export default function ManufacturingScreen() {
               <View style={isTablet ? { flex: 1 } : undefined}>
                 <OrderCard
                   order={item}
-                  onEdit={() => { setEditingOrder(item); setShowOrderForm(true); }}
-                  onDelete={() => handleDeleteOrder(item)}
-                  onStatusChange={(id, status) => updateProductionOrder(id, { status })}
+                  onEdit={isAdmin ? () => { setEditingOrder(item); setShowOrderForm(true); } : () => {}}
+                  onDelete={isAdmin ? () => handleDeleteOrder(item) : () => {}}
+                  onStatusChange={isAdmin ? (id, status) => updateProductionOrder(id, { status }) : () => {}}
                 />
               </View>
             )}
@@ -924,8 +934,8 @@ export default function ManufacturingScreen() {
             <View style={isTablet ? { flex: 1 } : undefined}>
               <WorkerCard
                 worker={item}
-                onEdit={() => { setEditingWorker(item); setShowWorkerForm(true); }}
-                onDelete={() => handleDeleteWorker(item)}
+                onEdit={isAdmin ? () => { setEditingWorker(item); setShowWorkerForm(true); } : () => {}}
+                onDelete={isAdmin ? () => handleDeleteWorker(item) : () => {}}
               />
             </View>
           )}
@@ -964,8 +974,8 @@ export default function ManufacturingScreen() {
               <View style={isTablet ? { flex: 1 } : undefined}>
                 <ExtMfgCard
                   item={item} artworks={artworks}
-                  onEdit={() => { setEditingExt(item); setShowExtForm(true); }}
-                  onDelete={() => handleDeleteExt(item)}
+                  onEdit={isAdmin ? () => { setEditingExt(item); setShowExtForm(true); } : () => {}}
+                  onDelete={isAdmin ? () => handleDeleteExt(item) : () => {}}
                 />
               </View>
             )}
@@ -973,36 +983,42 @@ export default function ManufacturingScreen() {
         </>
       ) : null}
 
-      {/* Modals */}
-      <WorkerFormModal
-        visible={showWorkerForm} worker={editingWorker}
-        onSave={data => {
-          if (editingWorker) updateWorker(editingWorker.id, data);
-          else addWorker(data);
-          setShowWorkerForm(false); setEditingWorker(null);
-        }}
-        onClose={() => { setShowWorkerForm(false); setEditingWorker(null); }}
-      />
-      <OrderFormModal
-        visible={showOrderForm} order={editingOrder}
-        artworks={artworks} customers={customers}
-        onSave={data => {
-          if (editingOrder) updateProductionOrder(editingOrder.id, data);
-          else addProductionOrder(data);
-          setShowOrderForm(false); setEditingOrder(null);
-        }}
-        onClose={() => { setShowOrderForm(false); setEditingOrder(null); }}
-      />
-      <ExtManufFormModal
-        visible={showExtForm} item={editingExt}
-        artworks={artworks} suppliers={suppliers}
-        onSave={data => {
-          if (editingExt) updateExternalManufacturing(editingExt.id, data);
-          else addExternalManufacturing(data);
-          setShowExtForm(false); setEditingExt(null);
-        }}
-        onClose={() => { setShowExtForm(false); setEditingExt(null); }}
-      />
+      {/* Modals — Admin only */}
+      {isAdmin ? (
+        <WorkerFormModal
+          visible={showWorkerForm} worker={editingWorker}
+          onSave={data => {
+            if (editingWorker) updateWorker(editingWorker.id, data);
+            else addWorker(data);
+            setShowWorkerForm(false); setEditingWorker(null);
+          }}
+          onClose={() => { setShowWorkerForm(false); setEditingWorker(null); }}
+        />
+      ) : null}
+      {isAdmin ? (
+        <OrderFormModal
+          visible={showOrderForm} order={editingOrder}
+          artworks={artworks} customers={customers}
+          onSave={data => {
+            if (editingOrder) updateProductionOrder(editingOrder.id, data);
+            else addProductionOrder(data);
+            setShowOrderForm(false); setEditingOrder(null);
+          }}
+          onClose={() => { setShowOrderForm(false); setEditingOrder(null); }}
+        />
+      ) : null}
+      {isAdmin ? (
+        <ExtManufFormModal
+          visible={showExtForm} item={editingExt}
+          artworks={artworks} suppliers={suppliers}
+          onSave={data => {
+            if (editingExt) updateExternalManufacturing(editingExt.id, data);
+            else addExternalManufacturing(data);
+            setShowExtForm(false); setEditingExt(null);
+          }}
+          onClose={() => { setShowExtForm(false); setEditingExt(null); }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

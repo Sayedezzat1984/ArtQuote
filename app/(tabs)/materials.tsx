@@ -14,6 +14,7 @@ import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { isTablet, pagePadding } from '@/constants/responsive';
+import { useAuth } from '@/contexts/AuthContext';
 import { FullMaterial, MaterialType, Supplier } from '@/contexts/AppContext';
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -580,6 +581,7 @@ const mc = StyleSheet.create({
 export default function MaterialsScreen() {
   const { fullMaterials, suppliers, addFullMaterial, updateFullMaterial, deleteFullMaterial, updateMaterialPrice } = useApp();
   const { showAlert } = useAlert();
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
   const [showForm, setShowForm] = useState(false);
@@ -608,11 +610,23 @@ export default function MaterialsScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditingMaterial(null); setShowForm(true); }} style={styles.addBtn}>
-          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-        </Pressable>
+        {isAdmin ? (
+          <Pressable onPress={() => { setEditingMaterial(null); setShowForm(true); }} style={styles.addBtn}>
+            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+          </Pressable>
+        ) : (
+          <View style={[styles.addBtn, { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="lock" size={18} color={Colors.textMuted} />
+          </View>
+        )}
         <Text style={styles.title}>إدارة الخامات</Text>
       </View>
+      {!isAdmin ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.infoSurface, paddingHorizontal: pagePadding, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.info + '30', justifyContent: 'center' }}>
+          <MaterialIcons name="visibility" size={14} color={Colors.info} />
+          <Text style={{ fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.medium }}>وضع العرض فقط — بيانات التكاليف والأسعار للمشرف فقط</Text>
+        </View>
+      ) : null}
 
       {/* Stats */}
       <View style={styles.statsRow}>
@@ -679,29 +693,35 @@ export default function MaterialsScreen() {
         )}
       />
 
-      <MaterialFormModal
-        visible={showForm} material={editingMaterial} suppliers={suppliers}
-        onSave={data => {
-          if (editingMaterial) updateFullMaterial(editingMaterial.id, data);
-          else addFullMaterial(data);
-          setShowForm(false); setEditingMaterial(null);
-        }}
-        onClose={() => { setShowForm(false); setEditingMaterial(null); }}
-      />
+      {isAdmin ? (
+        <MaterialFormModal
+          visible={showForm} material={editingMaterial} suppliers={suppliers}
+          onSave={data => {
+            if (editingMaterial) updateFullMaterial(editingMaterial.id, data);
+            else addFullMaterial(data);
+            setShowForm(false); setEditingMaterial(null);
+          }}
+          onClose={() => { setShowForm(false); setEditingMaterial(null); }}
+        />
+      ) : null}
 
-      <PriceHistoryModal
-        visible={priceHistoryMat !== null} material={priceHistoryMat}
-        onClose={() => setPriceHistoryMat(null)}
-      />
+      {isAdmin ? (
+        <PriceHistoryModal
+          visible={priceHistoryMat !== null} material={priceHistoryMat}
+          onClose={() => setPriceHistoryMat(null)}
+        />
+      ) : null}
 
-      <UpdatePriceModal
-        visible={updatePriceMat !== null} material={updatePriceMat} suppliers={suppliers}
-        onUpdate={(price, supId, supName, notes) => {
-          if (updatePriceMat) updateMaterialPrice(updatePriceMat.id, price, supId, supName, notes);
-          setUpdatePriceMat(null);
-        }}
-        onClose={() => setUpdatePriceMat(null)}
-      />
+      {isAdmin ? (
+        <UpdatePriceModal
+          visible={updatePriceMat !== null} material={updatePriceMat} suppliers={suppliers}
+          onUpdate={(price, supId, supName, notes) => {
+            if (updatePriceMat) updateMaterialPrice(updatePriceMat.id, price, supId, supName, notes);
+            setUpdatePriceMat(null);
+          }}
+          onClose={() => setUpdatePriceMat(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

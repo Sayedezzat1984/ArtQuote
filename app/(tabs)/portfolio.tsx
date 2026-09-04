@@ -14,6 +14,7 @@ import { ArtworkCard, ArtworkFormModal, EmptyState } from '@/components';
 import { ArtworkDetailModal } from '@/components/feature/ArtworkDetailModal';
 import { Artwork } from '@/contexts/AppContext';
 import { isTablet, pagePadding, numColumns, contentMaxWidth } from '@/constants/responsive';
+import { useAuth } from '@/contexts/AuthContext';
 
 type SortKey = 'newest' | 'oldest' | 'priceHigh' | 'priceLow' | 'title';
 type AvailFilter = 'all' | 'available' | 'sold';
@@ -30,6 +31,7 @@ export default function PortfolioScreen() {
   const { artworks, materials, artworkCategories, addArtwork, updateArtwork, deleteArtwork, addArtworkCategory, deleteArtworkCategory } = useApp();
   const { showAlert } = useAlert();
   const { t, lang, currency } = useLanguage();
+  const { isAdmin } = useAuth();
 
   const [showForm, setShowForm] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
@@ -112,9 +114,15 @@ export default function PortfolioScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => { setEditingArtwork(null); setShowForm(true); }} style={styles.addBtn}>
-          <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
-        </Pressable>
+        {isAdmin ? (
+          <Pressable onPress={() => { setEditingArtwork(null); setShowForm(true); }} style={styles.addBtn}>
+            <MaterialIcons name="add" size={22} color={Colors.textOnPrimary} />
+          </Pressable>
+        ) : (
+          <View style={styles.addBtnDisabled}>
+            <MaterialIcons name="lock" size={18} color={Colors.textMuted} />
+          </View>
+        )}
         <Text style={styles.title}>{t('artworkAlbum')}</Text>
       </View>
 
@@ -222,23 +230,25 @@ export default function PortfolioScreen() {
               artwork={item}
               materials={materials}
               onPress={() => setDetailArtwork(item)}
-              onEdit={() => handleEdit(item)}
-              onDelete={() => handleDelete(item)}
+              onEdit={isAdmin ? () => handleEdit(item) : undefined}
+              onDelete={isAdmin ? () => handleDelete(item) : undefined}
             />
           </View>
         )}
       />
 
-      <ArtworkFormModal
-        visible={showForm}
-        artwork={editingArtwork}
-        materials={materials}
-        artworkCategories={artworkCategories}
-        onSave={handleSave}
-        onClose={() => { setShowForm(false); setEditingArtwork(null); }}
-        onAddCategory={addArtworkCategory}
-        onDeleteCategory={deleteArtworkCategory}
-      />
+      {isAdmin ? (
+        <ArtworkFormModal
+          visible={showForm}
+          artwork={editingArtwork}
+          materials={materials}
+          artworkCategories={artworkCategories}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditingArtwork(null); }}
+          onAddCategory={addArtworkCategory}
+          onDeleteCategory={deleteArtworkCategory}
+        />
+      ) : null}
 
       <ArtworkDetailModal
         visible={detailArtwork !== null}
@@ -345,6 +355,12 @@ const styles = StyleSheet.create({
     width: isTablet ? 48 : 40, height: isTablet ? 48 : 40,
     borderRadius: isTablet ? 24 : 20,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  addBtnDisabled: {
+    width: isTablet ? 48 : 40, height: isTablet ? 48 : 40,
+    borderRadius: isTablet ? 24 : 20,
+    backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: Colors.border,
   },
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
