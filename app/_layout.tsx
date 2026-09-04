@@ -1,5 +1,5 @@
 // Powered by OnSpace.AI
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
@@ -14,7 +14,6 @@ import { Colors } from '@/constants/theme';
 // ─── Root notification listener setup ───────────────────────────────────
 function useNotificationListener() {
   useEffect(() => {
-    // Handle notification response (tapped from background/closed)
     const sub = Notifications.addNotificationResponseReceivedListener(_response => {
       // Navigate to gallery on tap — router handles it via deep link
     });
@@ -22,8 +21,8 @@ function useNotificationListener() {
   }, []);
 }
 
-// ─── Inner layout: consumes AuthContext ───────────────────────────────────
-function AppShell() {
+// ─── Inner navigator: only switches the Stack, providers never remount ────
+function AppNavigator() {
   useNotificationListener();
   const { appMode } = useAuth();
 
@@ -36,41 +35,38 @@ function AppShell() {
   }
 
   if (appMode === 'admin') {
-    // Full admin mode
     return (
-      <LanguageProvider>
-        <AppProvider>
-          <VisitorProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-          </VisitorProvider>
-        </AppProvider>
-      </LanguageProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+      </Stack>
     );
   }
 
-  // Public gallery — default for all non-admin states (client / unauthenticated)
+  // Public gallery — default for client / unauthenticated
   return (
-    <LanguageProvider>
-      <AppProvider>
-        <VisitorProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(guest)" />
-          </Stack>
-        </VisitorProvider>
-      </AppProvider>
-    </LanguageProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(guest)" />
+    </Stack>
   );
 }
 
 // ─── Root layout ──────────────────────────────────────────────────────────
+// IMPORTANT: AppProvider, LanguageProvider, and VisitorProvider are placed
+// OUTSIDE AppNavigator so they initialize ONCE at app start and are NEVER
+// remounted when appMode changes (admin ↔ client). This guarantees Firestore
+// listeners and artwork state are always available before any screen renders.
 export default function RootLayout() {
   return (
     <AlertProvider>
       <SafeAreaProvider>
         <AuthProvider>
-          <AppShell />
+          <LanguageProvider>
+            <AppProvider>
+              <VisitorProvider>
+                <AppNavigator />
+              </VisitorProvider>
+            </AppProvider>
+          </LanguageProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </AlertProvider>
