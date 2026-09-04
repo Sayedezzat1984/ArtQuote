@@ -47,8 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAppMode('client');
         }
       } else {
-        // No firebase session — keep current mode if client, else unauthenticated
-        setAppMode(prev => (prev === 'client' ? 'client' : 'unauthenticated'));
+        // No firebase session → always go to public gallery (client mode)
+        setAppMode('client');
       }
     });
     return () => unsub();
@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     try {
       await firebaseSignOut(auth);
-      setAppMode('unauthenticated');
+      setAppMode('client'); // Return to public gallery after logout
     } catch {}
   }
 

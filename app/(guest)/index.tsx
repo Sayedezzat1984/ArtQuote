@@ -1,10 +1,12 @@
-// Powered by OnSpace.AI — Guest Gallery (Real-Time)
+// Powered by OnSpace.AI — Public Gallery (No Login Required)
 import React, {
   useState, useMemo, useCallback, useRef, useEffect,
 } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   Dimensions, ActivityIndicator, Animated, AppState, AppStateStatus,
+  Modal, TextInput as RNTextInput, KeyboardAvoidingView, Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -13,17 +15,170 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/hooks/useApp';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVisitor } from '@/contexts/VisitorContext';
 import { Artwork } from '@/contexts/AppContext';
 import { isTablet } from '@/constants/responsive';
-import { notifyNewArtwork, areNotificationsEnabled } from '@/services/notificationService';
+import { ADMIN_EMAIL } from '@/services/firebase';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_GAP = 12;
 const COLS = isTablet ? 3 : 2;
 const CARD_W = (SCREEN_W - (COLS + 1) * CARD_GAP * (isTablet ? 1.5 : 1.2)) / COLS;
 
-export default function GuestGalleryScreen() {
+// ─── Inline Admin Login Modal ─────────────────────────────────────────────────
+function AdminLoginModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { signIn, authError, authLoading, clearError } = useAuth();
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState(ADMIN_EMAIL);
+  const [resetSent, setResetSent] = useState(false);
+  const { resetPassword } = useAuth();
+
+  function handleClose() {
+    setPassword('');
+    clearError();
+    setShowReset(false);
+    setResetSent(false);
+    onClose();
+  }
+
+  async function handleLogin() {
+    if (!password) return;
+    await signIn(ADMIN_EMAIL, password);
+    // If login succeeds, AuthContext routes to (tabs) automatically
+    // If it fails, authError is set
+  }
+
+  async function handleReset() {
+    if (!resetEmail.trim()) return;
+    await resetPassword(resetEmail);
+    setResetSent(true);
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+        <View style={styles.modalCard}>
+          {/* Handle bar */}
+          <View style={styles.modalHandle} />
+
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <Pressable onPress={handleClose} style={styles.modalCloseBtn} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={Colors.textSecondary} />
+            </Pressable>
+            <View style={styles.modalTitleRow}>
+              <MaterialIcons name="admin-panel-settings" size={18} color={Colors.primary} />
+              <Text style={styles.modalTitle}>دخول المشرف</Text>
+            </View>
+          </View>
+
+          {!showReset ? (
+            <View style={styles.modalBody}>
+              {authError ? (
+                <View style={styles.errorBox}>
+                  <MaterialIcons name="error-outline" size={14} color={Colors.error} />
+                  <Text style={styles.errorTxt}>{authError}</Text>
+                  <Pressable onPress={clearError} hitSlop={8}>
+                    <MaterialIcons name="close" size={12} color={Colors.error} />
+                  </Pressable>
+                </View>
+              ) : null}
+
+              <Text style={styles.emailHint}>{ADMIN_EMAIL}</Text>
+
+              {/* Password */}
+              <View style={styles.inputRow}>
+                <Pressable onPress={() => setShowPwd(!showPwd)} hitSlop={8} style={styles.inputIcon}>
+                  <MaterialIcons name={showPwd ? 'visibility-off' : 'visibility'} size={18} color={Colors.textMuted} />
+                </Pressable>
+                <RNTextInput
+                  value={password}
+                  onChangeText={v => { setPassword(v); clearError(); }}
+                  secureTextEntry={!showPwd}
+                  style={styles.input}
+                  textAlign="right"
+                  placeholder="كلمة المرور"
+                  placeholderTextColor={Colors.textMuted}
+                  onSubmitEditing={handleLogin}
+                  returnKeyType="go"
+                  autoFocus
+                />
+              </View>
+
+              <Pressable onPress={() => setShowReset(true)} style={styles.forgotRow}>
+                <Text style={styles.forgotTxt}>نسيت كلمة المرور؟</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleLogin}
+                disabled={authLoading || !password}
+                style={[styles.loginBtn, (authLoading || !password) && styles.loginBtnDisabled]}
+              >
+                {authLoading ? (
+                  <ActivityIndicator size="small" color={Colors.textOnPrimary} />
+                ) : (
+                  <>
+                    <MaterialIcons name="login" size={18} color={Colors.textOnPrimary} />
+                    <Text style={styles.loginBtnTxt}>دخول</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.modalBody}>
+              {resetSent ? (
+                <View style={styles.resetSentBox}>
+                  <MaterialIcons name="check-circle" size={40} color={Colors.success} />
+                  <Text style={styles.resetSentTxt}>تم إرسال رابط الاستعادة على بريدك الإلكتروني</Text>
+                  <Pressable onPress={handleClose} style={styles.doneBtn}>
+                    <Text style={styles.doneBtnTxt}>تم</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.resetLabel}>أدخل بريدك الإلكتروني</Text>
+                  <RNTextInput
+                    value={resetEmail}
+                    onChangeText={setResetEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    style={styles.resetInput}
+                    textAlign="right"
+                    placeholder="your@email.com"
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                  <Pressable onPress={handleReset} disabled={authLoading} style={styles.loginBtn}>
+                    {authLoading ? (
+                      <ActivityIndicator size="small" color={Colors.textOnPrimary} />
+                    ) : (
+                      <Text style={styles.loginBtnTxt}>إرسال رابط الاستعادة</Text>
+                    )}
+                  </Pressable>
+                  <Pressable onPress={() => setShowReset(false)} style={styles.backRow}>
+                    <Text style={styles.forgotTxt}>رجوع</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ─── Main Gallery Screen ──────────────────────────────────────────────────────
+export default function PublicGalleryScreen() {
   const {
     artworks,
     artworkCategories,
@@ -32,36 +187,22 @@ export default function GuestGalleryScreen() {
     isOnline,
   } = useApp() as any;
 
-  const { signOut } = useAuth();
-  const {
-    isRegistered,
-    isLoadingVisitor,
-    notificationsEnabled,
-    requestNotificationPermission,
-  } = useVisitor();
   const router = useRouter();
 
-  // ── Redirect if not registered ────────────────────────────────────────────
-  useEffect(() => {
-    if (!isLoadingVisitor && !isRegistered) {
-      router.replace('/(guest)/register');
-    }
-  }, [isLoadingVisitor, isRegistered]);
+  // ── Admin modal ───────────────────────────────────────────────────────────
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
-  // ── Cold-start: one-shot fetch on first open ─────────────────────────────
+  // ── Cold-start: one-shot fetch on first open ──────────────────────────────
   const coldStartDone = useRef(false);
   const [coldSyncing, setColdSyncing] = useState(false);
 
   useEffect(() => {
-    if (!isRegistered || isLoadingVisitor) return;
     if (coldStartDone.current) return;
     coldStartDone.current = true;
-    // AppContext already has a real-time listener; only do a fetchOnce if no
-    // artworks have arrived yet (prevents empty gallery on first cold open).
     if (artworksReady && artworks.length > 0) return;
     setColdSyncing(true);
     syncGuestGallery().finally(() => setColdSyncing(false));
-  }, [isRegistered, isLoadingVisitor, artworksReady, artworks.length, syncGuestGallery]);
+  }, [artworksReady, artworks.length, syncGuestGallery]);
 
   // ── Re-sync when coming back online ──────────────────────────────────────
   const wasOffline = useRef(false);
@@ -70,7 +211,6 @@ export default function GuestGalleryScreen() {
       wasOffline.current = true;
     } else if (wasOffline.current) {
       wasOffline.current = false;
-      // Connection restored — fetch latest to catch any missed changes
       syncGuestGallery().catch(() => {});
     }
   }, [isOnline, syncGuestGallery]);
@@ -78,7 +218,6 @@ export default function GuestGalleryScreen() {
   // ── Re-sync on app foreground ─────────────────────────────────────────────
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
-    if (!isRegistered) return;
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
@@ -87,21 +226,11 @@ export default function GuestGalleryScreen() {
       }
     });
     return () => sub.remove();
-  }, [isRegistered, syncGuestGallery]);
+  }, [syncGuestGallery]);
 
   // ── Search / filter state ─────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
-
-  // ── Notification banner ───────────────────────────────────────────────────
-  const [showNotifBanner, setShowNotifBanner] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(async () => {
-      const enabled = await areNotificationsEnabled();
-      if (!enabled) setShowNotifBanner(true);
-    }, 1500);
-    return () => clearTimeout(t);
-  }, []);
 
   // ── Manual refresh state ──────────────────────────────────────────────────
   type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
@@ -125,16 +254,15 @@ export default function GuestGalleryScreen() {
   const [newArtworkIds, setNewArtworkIds] = useState<Set<string>>(new Set());
   const initialised = useRef(false);
 
-  // Only visible artworks (visibleToVisitors !== false)
+  // Only visible artworks
   const visibleArtworks = useMemo(() => {
     return (artworks as Artwork[]).filter((a: Artwork) => (a as any).visibleToVisitors !== false);
   }, [artworks]);
 
-  // Keep ref in sync for AppState callbacks
   const visibleArtworksRef = useRef<Artwork[]>(visibleArtworks);
   useEffect(() => { visibleArtworksRef.current = visibleArtworks; }, [visibleArtworks]);
 
-  // On first load, seed known IDs (no "new" badge for existing artworks)
+  // Seed known IDs on first load
   useEffect(() => {
     if (!initialised.current && visibleArtworks.length > 0) {
       initialised.current = true;
@@ -142,20 +270,16 @@ export default function GuestGalleryScreen() {
     }
   }, [visibleArtworks]);
 
-  // ── Real-time change detection (driven by AppContext listener) ─────────────
-  // artworks state in AppContext updates automatically via Firestore onSnapshot.
-  // We just watch for new IDs to display the "جديد" badge and local notification.
+  // Detect new artworks from real-time listener
   const notifyLockRef = useRef(false);
   useEffect(() => {
-    if (!initialised.current) return; // skip before first seed
+    if (!initialised.current) return;
     if (notifyLockRef.current) return;
-
     const prevIds = knownIdsRef.current;
     const addedIds = new Set<string>();
     visibleArtworks.forEach((a: Artwork) => {
       if (!prevIds.has(a.id)) addedIds.add(a.id);
     });
-
     if (addedIds.size > 0) {
       notifyLockRef.current = true;
       knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
@@ -164,10 +288,7 @@ export default function GuestGalleryScreen() {
         setNewArtworkIds(new Set());
         notifyLockRef.current = false;
       }, 10_000);
-      const firstTitle = visibleArtworks.find((a: Artwork) => addedIds.has(a.id))?.title || 'عمل جديد';
-      notifyNewArtwork(firstTitle, addedIds.size).catch(() => {});
     } else {
-      // Update known IDs if artworks were deleted or hidden
       knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
     }
   }, [visibleArtworks]);
@@ -179,14 +300,11 @@ export default function GuestGalleryScreen() {
     try {
       const prevIds = new Set(knownIdsRef.current);
       await syncGuestGallery();
-      // Let state settle
       await new Promise(res => setTimeout(res, 300));
-
       const current = visibleArtworksRef.current;
       const addedIds = new Set<string>();
       current.forEach((a: Artwork) => { if (!prevIds.has(a.id)) addedIds.add(a.id); });
       knownIdsRef.current = new Set(current.map((a: Artwork) => a.id));
-
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
         setTimeout(() => setNewArtworkIds(new Set()), 10_000);
@@ -199,11 +317,6 @@ export default function GuestGalleryScreen() {
       setRefreshStatus('idle');
     }
   }, [refreshStatus, syncGuestGallery]);
-
-  const handleEnableNotifications = useCallback(async () => {
-    const granted = await requestNotificationPermission();
-    if (granted) setShowNotifBanner(false);
-  }, [requestNotificationPermission]);
 
   // ── Category labels ───────────────────────────────────────────────────────
   const ALL_LABEL = 'الكل';
@@ -221,30 +334,16 @@ export default function GuestGalleryScreen() {
     });
   }, [visibleArtworks, search, catFilter]);
 
-  // ── Loading states ────────────────────────────────────────────────────────
-  if (isLoadingVisitor) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>جاري التحقق...</Text>
-      </View>
-    );
-  }
-
-  if (!isRegistered) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
+  // ── Loading screen ────────────────────────────────────────────────────────
   if (coldSyncing && !artworksReady && visibleArtworks.length === 0) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <View style={styles.loadingLogoCircle}>
+          <MaterialIcons name="palette" size={40} color={Colors.primary} />
+        </View>
+        <Text style={styles.loadingBrand}>سيد عزت</Text>
+        <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
         <Text style={styles.loadingText}>جاري تحميل المعرض...</Text>
-        <Text style={styles.loadingSubText}>يتم جلب أحدث الأعمال الفنية</Text>
       </View>
     );
   }
@@ -257,16 +356,27 @@ export default function GuestGalleryScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <View style={styles.header}>
-        <Pressable onPress={signOut} style={styles.backBtn}>
-          <MaterialIcons name="exit-to-app" size={18} color={Colors.textSecondary} />
-          <Text style={styles.backBtnText}>خروج</Text>
+
+        {/* Small Admin Button — top left (RTL) */}
+        <Pressable
+          onPress={() => setShowAdminModal(true)}
+          style={({ pressed }) => [styles.adminBtn, pressed && { opacity: 0.7 }]}
+          hitSlop={8}
+          accessibilityLabel="دخول المشرف"
+        >
+          <MaterialIcons name="lock" size={15} color={Colors.textMuted} />
         </Pressable>
+
+        {/* Title */}
         <View style={styles.titleBlock}>
           <Text style={styles.title}>سيد عزت</Text>
           <Text style={styles.subtitle}>معرض الأعمال الفنية</Text>
         </View>
+
+        {/* Refresh button */}
         <Pressable
           onPress={handleRefresh}
           disabled={refreshStatus === 'refreshing'}
@@ -299,7 +409,7 @@ export default function GuestGalleryScreen() {
         </View>
       ) : null}
 
-      {/* Sync in-progress */}
+      {/* Syncing bar */}
       {isSyncing && isOnline ? (
         <View style={styles.statusBar}>
           <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />
@@ -307,7 +417,7 @@ export default function GuestGalleryScreen() {
         </View>
       ) : null}
 
-      {/* Real-time connected indicator (subtle) */}
+      {/* Live indicator */}
       {isOnline && !isSyncing && artworksReady ? (
         <View style={styles.liveBar}>
           <View style={styles.liveDot} />
@@ -315,38 +425,9 @@ export default function GuestGalleryScreen() {
         </View>
       ) : null}
 
-      {/* Notification permission banner */}
-      {showNotifBanner && !notificationsEnabled ? (
-        <View style={styles.notifBanner}>
-          <View style={styles.notifBannerLeft}>
-            <MaterialIcons name="notifications-none" size={20} color={Colors.primary} />
-            <View>
-              <Text style={styles.notifBannerTitle}>تفعيل الإشعارات</Text>
-              <Text style={styles.notifBannerSub}>كن أول من يعلم بالأعمال الجديدة</Text>
-            </View>
-          </View>
-          <View style={styles.notifBannerActions}>
-            <Pressable onPress={handleEnableNotifications} style={styles.notifEnableBtn}>
-              <Text style={styles.notifEnableBtnText}>تفعيل</Text>
-            </Pressable>
-            <Pressable onPress={() => setShowNotifBanner(false)} style={styles.notifDismissBtn} hitSlop={8}>
-              <MaterialIcons name="close" size={16} color={Colors.textMuted} />
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-
-      {/* Notifications active */}
-      {notificationsEnabled ? (
-        <View style={styles.notifActiveBar}>
-          <MaterialIcons name="notifications-active" size={13} color={Colors.success} />
-          <Text style={styles.notifActiveText}>ستصلك إشعارات عند إضافة أعمال جديدة</Text>
-        </View>
-      ) : null}
-
       <View style={styles.headerDivider} />
 
-      {/* Search */}
+      {/* ── Search ──────────────────────────────────────────────────────── */}
       <View style={styles.searchRow}>
         <View style={styles.searchBar}>
           <TextInput
@@ -367,7 +448,7 @@ export default function GuestGalleryScreen() {
         </View>
       </View>
 
-      {/* Category chips */}
+      {/* ── Category chips ───────────────────────────────────────────────── */}
       {categoryLabels.length > 1 ? (
         <View style={styles.catOuter}>
           <FlatList
@@ -390,7 +471,7 @@ export default function GuestGalleryScreen() {
         </View>
       ) : null}
 
-      {/* Count row */}
+      {/* ── Count row ───────────────────────────────────────────────────── */}
       <View style={styles.countRow}>
         <Text style={styles.countText}>{filtered.length} عمل فني</Text>
         {!isOnline ? (
@@ -401,7 +482,7 @@ export default function GuestGalleryScreen() {
         ) : null}
       </View>
 
-      {/* Gallery Grid */}
+      {/* ── Gallery Grid ─────────────────────────────────────────────────── */}
       <FlatList
         data={filtered}
         keyExtractor={a => a.id}
@@ -447,7 +528,6 @@ export default function GuestGalleryScreen() {
                   style={styles.img}
                   contentFit="cover"
                   transition={200}
-                  // Append updatedAt to bust image cache when admin changes the image
                   cachePolicy="memory-disk"
                 />
               ) : (
@@ -474,7 +554,7 @@ export default function GuestGalleryScreen() {
         )}
       />
 
-      {/* Toast */}
+      {/* ── Toast ─────────────────────────────────────────────────────────── */}
       {toastMessage ? (
         <Animated.View
           style={[
@@ -493,25 +573,40 @@ export default function GuestGalleryScreen() {
           </Text>
         </Animated.View>
       ) : null}
+
+      {/* ── Admin Login Modal ─────────────────────────────────────────────── */}
+      <AdminLoginModal
+        visible={showAdminModal}
+        onClose={() => setShowAdminModal(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  // Loading
   loadingScreen: {
     flex: 1,
     backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 8,
+  },
+  loadingLogoCircle: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: Colors.primarySurface,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.primary + '50',
+    ...Shadow.gold,
+  },
+  loadingBrand: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.primary,
+    letterSpacing: 1,
+    marginTop: 12,
   },
   loadingText: {
-    fontSize: FontSize.base,
-    color: Colors.primary,
-    fontWeight: FontWeight.semibold,
-    textAlign: 'center',
-  },
-  loadingSubText: {
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
     textAlign: 'center',
@@ -519,6 +614,7 @@ const styles = StyleSheet.create({
 
   safe: { flex: 1, backgroundColor: Colors.background },
 
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -526,18 +622,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  // Small admin button — top-left in RTL
+  adminBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
     borderWidth: 1,
     borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.7,
   },
-  backBtnText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   titleBlock: { alignItems: 'center', flex: 1 },
   title: {
     fontSize: isTablet ? FontSize.xxl : FontSize.xl,
@@ -558,258 +654,196 @@ const styles = StyleSheet.create({
   },
   refreshBtnActive: { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border },
 
-  // Offline bar
+  // Status bars
   offlineBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    backgroundColor: '#c0392b',
-    paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 7, backgroundColor: '#c0392b', paddingVertical: 8,
   },
   offlineText: { fontSize: FontSize.xs, color: '#fff', fontWeight: FontWeight.semibold },
-
-  // Syncing status bar
   statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primarySurface,
-    paddingVertical: 7,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.primary + '30',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.primarySurface, paddingVertical: 7, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: Colors.primary + '30',
   },
   statusBarText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
-
-  // Live indicator
   liveBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 4,
-    backgroundColor: Colors.successSurface,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 4, backgroundColor: Colors.successSurface,
   },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.success,
-  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.success },
   liveText: { fontSize: 10, color: Colors.success, fontWeight: FontWeight.semibold },
-
-  // Notification banner
-  notifBanner: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: Colors.primarySurface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary + '40',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  notifBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  notifBannerTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
-    textAlign: 'right',
-  },
-  notifBannerSub: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: 'right',
-    marginTop: 1,
-  },
-  notifBannerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  notifEnableBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  notifEnableBtnText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: '#0d0d0f' },
-  notifDismissBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  notifActiveBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 5,
-    backgroundColor: Colors.successSurface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.success + '30',
-  },
-  notifActiveText: { fontSize: 11, color: Colors.success, fontWeight: FontWeight.medium },
 
   headerDivider: { height: 1, backgroundColor: Colors.border },
 
+  // Search
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.lg,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.lg,
+    paddingHorizontal: 14, borderWidth: 1, borderColor: Colors.border,
   },
   searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: FontSize.base,
-    color: Colors.textPrimary,
-    marginLeft: 8,
+    flex: 1, paddingVertical: 10, fontSize: FontSize.base,
+    color: Colors.textPrimary, marginLeft: 8,
   },
 
+  // Category chips
   catOuter: { height: 46 },
   catContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   catChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border,
   },
   catChipActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
   catChipText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   catChipTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
 
+  // Count row
   countRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    paddingTop: 4,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4,
   },
   countText: { fontSize: FontSize.xs, color: Colors.textMuted },
   offlineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: Colors.border,
   },
   offlineBadgeText: { fontSize: 10, color: Colors.textMuted },
 
+  // Grid
   grid: { paddingHorizontal: CARD_GAP, paddingBottom: 32 },
   columnWrapper: { gap: CARD_GAP, marginBottom: CARD_GAP },
-
   card: {
-    width: CARD_W,
-    backgroundColor: Colors.card,
-    borderRadius: Radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadow.sm,
+    width: CARD_W, backgroundColor: Colors.card, borderRadius: Radius.lg,
+    overflow: 'hidden', borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
   },
   cardPressed: { opacity: 0.88, transform: [{ scale: 0.97 }] },
   imgContainer: {
-    width: '100%',
-    height: CARD_W * 1.15,
-    backgroundColor: Colors.surfaceElevated,
-    position: 'relative',
+    width: '100%', height: CARD_W * 1.15, backgroundColor: Colors.surfaceElevated, position: 'relative',
   },
   img: { width: '100%', height: '100%' },
   imgPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primarySurface,
+    flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primarySurface,
   },
   catBadge: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    maxWidth: CARD_W - 16,
+    position: 'absolute', bottom: 6, right: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 3, maxWidth: CARD_W - 16,
   },
   catBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.semibold },
   newBadge: {
-    position: 'absolute',
-    top: 7,
-    left: 7,
-    backgroundColor: Colors.success,
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: '#fff',
+    position: 'absolute', top: 7, left: 7, backgroundColor: Colors.success,
+    borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#fff',
   },
   newBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.extrabold, letterSpacing: 0.5 },
   cardBody: { padding: 10, paddingTop: 8 },
   cardTitle: {
-    fontSize: isTablet ? FontSize.base : FontSize.sm,
-    fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
-    textAlign: 'right',
-    lineHeight: 20,
+    fontSize: isTablet ? FontSize.base : FontSize.sm, fontWeight: FontWeight.bold,
+    color: Colors.textPrimary, textAlign: 'right', lineHeight: 20,
   },
   cardYear: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 2 },
 
+  // Empty state
   empty: { alignItems: 'center', paddingVertical: 80, gap: 8 },
   emptyTitle: {
-    fontSize: FontSize.xl,
-    fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
-    marginTop: 8,
-    textAlign: 'center',
+    fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary,
+    marginTop: 8, textAlign: 'center',
   },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center' },
   retryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 16,
-    backgroundColor: Colors.primarySurface,
-    borderRadius: Radius.full,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16,
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.full,
+    paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1, borderColor: Colors.primary,
   },
   retryBtnText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.semibold },
 
+  // Toast
   toast: {
-    position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.card,
-    borderRadius: Radius.full,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: Colors.primary + '50',
-    ...Shadow.md,
+    position: 'absolute', bottom: 24, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.card, borderRadius: Radius.full,
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderWidth: 1, borderColor: Colors.primary + '50', ...Shadow.md,
   },
   toastNew: { borderColor: Colors.success + '70', backgroundColor: Colors.successSurface },
   toastText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.primary },
+
+  // ── Admin Login Modal ──────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderBottomWidth: 0,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginTop: 12, marginBottom: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  modalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  modalCloseBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  modalBody: { padding: 20, gap: 12 },
+  emailHint: {
+    fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right',
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    padding: 10, borderWidth: 1, borderColor: Colors.border,
+  },
+  errorBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.errorSurface, borderRadius: Radius.md,
+    padding: 10, borderWidth: 1, borderColor: Colors.error + '40',
+  },
+  errorTxt: { flex: 1, fontSize: FontSize.xs, color: Colors.error, textAlign: 'right' },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
+  },
+  inputIcon: { paddingHorizontal: 12 },
+  input: {
+    flex: 1, paddingVertical: 14, paddingHorizontal: 8,
+    fontSize: FontSize.base, color: Colors.textPrimary,
+  },
+  forgotRow: { alignItems: 'flex-end' },
+  forgotTxt: { fontSize: FontSize.xs, color: Colors.primary },
+  backRow: { alignItems: 'center', marginTop: 4 },
+  loginBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.primary, borderRadius: Radius.lg, paddingVertical: 14,
+    ...Shadow.gold,
+  },
+  loginBtnDisabled: { opacity: 0.5 },
+  loginBtnTxt: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textOnPrimary },
+  resetLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right' },
+  resetInput: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
+    padding: 14, fontSize: FontSize.base, color: Colors.textPrimary,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  resetSentBox: { alignItems: 'center', gap: 14, paddingVertical: 20 },
+  resetSentTxt: { fontSize: FontSize.base, color: Colors.textPrimary, textAlign: 'center' },
+  doneBtn: {
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.md,
+    paddingVertical: 10, paddingHorizontal: 32,
+    borderWidth: 1, borderColor: Colors.primary,
+  },
+  doneBtnTxt: { color: Colors.primary, fontWeight: FontWeight.bold },
 });

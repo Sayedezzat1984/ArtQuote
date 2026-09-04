@@ -9,7 +9,6 @@ import { AppProvider } from '@/contexts/AppContext';
 import { VisitorProvider } from '@/contexts/VisitorContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { AdminLoginScreen } from '@/components/feature/AdminLoginScreen';
 import { Colors } from '@/constants/theme';
 
 // ─── Root notification listener setup ───────────────────────────────────
@@ -36,18 +35,14 @@ function AppShell() {
     );
   }
 
-  if (appMode === 'unauthenticated') {
-    return <AdminLoginScreen />;
-  }
-
-  if (appMode === 'client') {
-    // Guest / Visitor mode — artworks gallery only with visitor registration
+  if (appMode === 'admin') {
+    // Full admin mode
     return (
       <LanguageProvider>
         <AppProvider>
           <VisitorProvider>
             <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(guest)" />
+              <Stack.Screen name="(tabs)" />
             </Stack>
           </VisitorProvider>
         </AppProvider>
@@ -55,13 +50,13 @@ function AppShell() {
     );
   }
 
-  // appMode === 'admin' — full app
+  // Public gallery — default for all non-admin states (client / unauthenticated)
   return (
     <LanguageProvider>
       <AppProvider>
         <VisitorProvider>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(guest)" />
           </Stack>
         </VisitorProvider>
       </AppProvider>
