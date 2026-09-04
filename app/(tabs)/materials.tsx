@@ -7,7 +7,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
+import { CloudImagePicker, UploadedImage, toUploadedImages, toUriArray } from '@/components/feature/CloudImagePicker';
+import { isCloudinaryUrl } from '@/services/cloudinaryService';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/hooks/useApp';
 import { useAlert } from '@/template';
@@ -209,6 +210,7 @@ function MaterialFormModal({ visible, material, suppliers, onSave, onClose }: {
   const [color, setColor] = useState('');
   const [notes, setNotes] = useState('');
   const [image, setImage] = useState<string | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<UploadedImage[]>([]);
   const [types, setTypes] = useState<MaterialType[]>([]);
   const [showAddType, setShowAddType] = useState(false);
   const [typeName, setTypeName] = useState('');
@@ -228,25 +230,22 @@ function MaterialFormModal({ visible, material, suppliers, onSave, onClose }: {
       setMinStock(material.minStock?.toString() || '');
       setCurrentStock(material.currentStock?.toString() || '');
       setColor(material.color || ''); setNotes(material.notes || '');
-      setImage(material.image || null); setTypes(material.types || []);
+      setImage(material.image || null);
+      setUploadedImage(material.image ? toUploadedImages([material.image]) : []);
+      setTypes(material.types || []);
     } else {
       setName(''); setNameEn(''); setCategory(''); setCode(''); setDescription('');
       setBrand(''); setSupplierId(''); setSupplierName('');
       setPurchaseUnit('كيلو'); setUnitPrice(''); setCurrency('ج.م');
       setMinStock(''); setCurrentStock(''); setColor(''); setNotes('');
-      setImage(null); setTypes([]);
+      setImage(null);
+      setUploadedImage([]);
+      setTypes([]);
     }
     setShowAddType(false); setTypeName(''); setTypeCode(''); setTypeUnit(''); setTypePrice('');
   }, [material, visible]);
 
-  async function pickImage() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-    if (!result.canceled && result.assets[0]) setImage(result.assets[0].uri);
-  }
-
-  function addType() {
+function addType() {
     if (!typeName.trim()) return;
     const newType: MaterialType = {
       id: Date.now().toString(), name: typeName, code: typeCode,
@@ -264,6 +263,9 @@ function MaterialFormModal({ visible, material, suppliers, onSave, onClose }: {
 
   function handleSave() {
     if (!name.trim()) { Alert.alert('خطأ', 'يرجى إدخال اسم الخامة'); return; }
+    const anyUploading = uploadedImage.some(img => img.isUploading);
+    if (anyUploading) { Alert.alert('انتظر', 'جارٍ رفع الصورة — يرجى الانتظار'); return; }
+    const finalImage = uploadedImage.length > 0 ? (uploadedImage[0].secure_url || uploadedImage[0].uri) : null;
     onSave({
       name: name.trim(), nameEn: nameEn.trim(), category, code: code.trim(),
       description: description.trim(), brand: brand.trim(), supplierId, supplierName,
@@ -271,7 +273,7 @@ function MaterialFormModal({ visible, material, suppliers, onSave, onClose }: {
       lastPurchasePrice: parseFloat(unitPrice) || 0,
       averagePrice: parseFloat(unitPrice) || 0,
       minStock: parseFloat(minStock) || 0, currentStock: parseFloat(currentStock) || 0,
-      color: color.trim(), notes: notes.trim(), image, types,
+      color: color.trim(), notes: notes.trim(), image: finalImage, types,
       priceHistory: material?.priceHistory || [],
     });
   }
@@ -290,17 +292,16 @@ function MaterialFormModal({ visible, material, suppliers, onSave, onClose }: {
               <Text style={mf.title}>{material ? 'تعديل الخامة' : 'إضافة خامة جديدة'}</Text>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={mf.content}>
-              {/* Image */}
-              <Pressable onPress={pickImage} style={mf.imgPicker}>
-                {image ? (
-                  <Image source={{ uri: image }} style={mf.imgPreview} contentFit="cover" />
-                ) : (
-                  <>
-                    <MaterialIcons name="add-photo-alternate" size={32} color={Colors.primary} />
-                    <Text style={mf.imgHint}>إضافة صورة</Text>
-                  </>
-                )}
-              </Pressable>
+              {/* Image — Cloudinary Upload */}
+              <View style={{ marginBottom: Spacing.base }}>
+                <CloudImagePicker
+                  images={uploadedImage}
+                  onChange={setUploadedImage}
+                  maxImages={1}
+                  folder="sayed_ezzat/materials"
+                  label="صورة الخامة"
+                />
+              </View>
 
               <Field label="اسم الخامة *" value={name} onChange={setName} placeholder="مثال: فايبرجلاس" />
               <Field label="الاسم بالإنجليزية" value={nameEn} onChange={setNameEn} placeholder="Fiberglass" />

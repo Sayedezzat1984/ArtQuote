@@ -4,14 +4,13 @@ import {
   View, Text, Modal, ScrollView, StyleSheet, Pressable,
   Switch, Alert, TextInput,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { globalStyles } from '@/constants/styles';
 import { Artwork, Material, ArtworkCategory } from '@/contexts/AppContext';
+import { CloudImagePicker, UploadedImage, toUploadedImages, toUriArray } from '@/components/feature/CloudImagePicker';
 
 interface ArtworkFormModalProps {
   visible: boolean;
@@ -23,35 +22,6 @@ interface ArtworkFormModalProps {
   onAddCategory?: (name: string) => Promise<void>;
   onDeleteCategory?: (id: string) => Promise<void>;
 }
-
-function DraggableImage({ uri, index, isMain, onRemove, onMoveLeft, onMoveRight, isFirst, isLast }: {
-  uri: string; index: number; isMain: boolean;
-  onRemove: () => void; onMoveLeft: () => void; onMoveRight: () => void;
-  isFirst: boolean; isLast: boolean;
-}) {
-  return (
-    <View style={imgStyles.wrap}>
-      <Image source={{ uri }} style={imgStyles.img} contentFit="cover" />
-      {isMain && <View style={imgStyles.mainBadge}><Text style={imgStyles.mainBadgeText}>رئيسية</Text></View>}
-      <View style={imgStyles.reorderRow}>
-        {!isFirst ? <Pressable onPress={onMoveLeft} style={imgStyles.arrowBtn} hitSlop={4}><MaterialIcons name="chevron-right" size={14} color="#fff" /></Pressable> : <View style={imgStyles.arrowPlaceholder} />}
-        {!isLast ? <Pressable onPress={onMoveRight} style={imgStyles.arrowBtn} hitSlop={4}><MaterialIcons name="chevron-left" size={14} color="#fff" /></Pressable> : <View style={imgStyles.arrowPlaceholder} />}
-      </View>
-      <Pressable onPress={onRemove} style={imgStyles.removeBtn}><MaterialIcons name="close" size={14} color="#fff" /></Pressable>
-    </View>
-  );
-}
-
-const imgStyles = StyleSheet.create({
-  wrap: { width: 90, height: 90, borderRadius: Radius.md, overflow: 'hidden', position: 'relative' },
-  img: { width: '100%', height: '100%' },
-  mainBadge: { position: 'absolute', bottom: 20, left: 0, right: 0, backgroundColor: Colors.primary + 'DD', paddingVertical: 2, alignItems: 'center' },
-  mainBadgeText: { fontSize: 9, color: '#0d0d0f', fontWeight: FontWeight.bold },
-  reorderRow: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 2, paddingVertical: 2 },
-  arrowBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  arrowPlaceholder: { width: 22 },
-  removeBtn: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
-});
 
 // Numeric-only input field
 function NumInput({ label, value, onChange, placeholder, unit, style }: {
@@ -97,7 +67,7 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [available, setAvailable] = useState(true);
   const [showPriceToCustomer, setShowPriceToCustomer] = useState(true);
-  const [images, setImages] = useState<string[]>([]);
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -118,7 +88,8 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
       setYear(artwork.year || new Date().getFullYear().toString());
       setAvailable(artwork.available !== false);
       setShowPriceToCustomer((artwork as any).showPriceToCustomer !== false);
-      setImages(artwork.images?.length ? artwork.images : (artwork.image ? [artwork.image] : []));
+      const existingImages = artwork.images?.length ? artwork.images : (artwork.image ? [artwork.image] : []);
+      setUploadedImages(toUploadedImages(existingImages));
       setSelectedMaterials(artwork.materialIds || []);
     } else {
       setTitle(''); setDescription('');
@@ -127,29 +98,10 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
       setDiameter(''); setThickness(''); setWeight('');
       setWeightUnit('kg'); setDimensionUnit('cm'); setQuantity('');
       setYear(new Date().getFullYear().toString());
-      setAvailable(true); setShowPriceToCustomer(true); setImages([]); setSelectedMaterials([]);
+      setAvailable(true); setShowPriceToCustomer(true); setUploadedImages([]); setSelectedMaterials([]);
     }
   }, [artwork, visible, artworkCategories]);
 
-  async function pickImages() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('خطأ', 'نحتاج إذن الوصول للصور'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsMultipleSelection: true, quality: 0.8 });
-    if (!result.canceled && result.assets) {
-      setImages(prev => [...prev, ...result.assets.map(a => a.uri)].slice(0, 10));
-    }
-  }
-
-  async function takePhoto() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('خطأ', 'نحتاج إذن الكاميرا'); return; }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (!result.canceled && result.assets[0]) setImages(prev => [...prev, result.assets[0].uri].slice(0, 10));
-  }
-
-  function removeImage(idx: number) { setImages(prev => prev.filter((_, i) => i !== idx)); }
-  function moveImageLeft(idx: number) { if (idx === 0) return; setImages(prev => { const a = [...prev]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; return a; }); }
-  function moveImageRight(idx: number) { setImages(prev => { if (idx >= prev.length - 1) return prev; const a = [...prev]; [a[idx], a[idx + 1]] = [a[idx + 1], a[idx]]; return a; }); }
   function toggleMaterial(id: string) { setSelectedMaterials(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); }
 
   function buildDimensions() {
@@ -161,8 +113,11 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
   function handleSave() {
     if (!title.trim()) { Alert.alert('خطأ', 'يرجى إدخال عنوان العمل'); return; }
     if (!price || isNaN(Number(price))) { Alert.alert('خطأ', 'يرجى إدخال سعر صحيح'); return; }
+    const anyUploading = uploadedImages.some(img => img.isUploading);
+    if (anyUploading) { Alert.alert('انتظر', 'جارٍ رفع الصور — يرجى الانتظار حتى تكتمل'); return; }
     setLoading(true);
     setTimeout(() => {
+      const finalUris = toUriArray(uploadedImages);
       onSave({
         title: title.trim(), description: description.trim(), category,
         price: Number(price),
@@ -170,7 +125,7 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
         weight, weightUnit, dimensionUnit, quantity,
         dimensions: buildDimensions(),
         year: year.trim(), available, showPriceToCustomer,
-        image: images[0] || null, images, materialIds: selectedMaterials,
+        image: finalUris[0] || null, images: finalUris, materialIds: selectedMaterials,
       });
       setLoading(false);
     }, 300);
@@ -196,28 +151,16 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Images */}
-            <View style={styles.imgSectionHeader}>
-              <Text style={styles.imgHint}>السهم لتغيير الترتيب · الأولى رئيسية</Text>
-              <Text style={styles.sectionLabel}>الصور ({images.length}/10)</Text>
+            {/* Images — Cloudinary Upload */}
+            <View style={{ marginBottom: Spacing.base }}>
+              <CloudImagePicker
+                images={uploadedImages}
+                onChange={setUploadedImages}
+                maxImages={10}
+                folder="sayed_ezzat/artworks"
+                label={`الصور (${uploadedImages.length}/10) — الأولى رئيسية`}
+              />
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
-              <View style={styles.imagesRow}>
-                <Pressable onPress={pickImages} style={styles.addImageBtn}>
-                  <MaterialIcons name="add-photo-alternate" size={28} color={Colors.primary} />
-                  <Text style={styles.addImageText}>صور{'\n'}متعددة</Text>
-                </Pressable>
-                <Pressable onPress={takePhoto} style={styles.addImageBtn}>
-                  <MaterialIcons name="camera-alt" size={28} color={Colors.info} />
-                  <Text style={[styles.addImageText, { color: Colors.info }]}>كاميرا</Text>
-                </Pressable>
-                {images.map((uri, i) => (
-                  <DraggableImage key={`${uri}-${i}`} uri={uri} index={i} isMain={i === 0}
-                    isFirst={i === 0} isLast={i === images.length - 1}
-                    onRemove={() => removeImage(i)} onMoveLeft={() => moveImageLeft(i)} onMoveRight={() => moveImageRight(i)} />
-                ))}
-              </View>
-            </ScrollView>
 
             <Input label="عنوان العمل *" value={title} onChangeText={setTitle} placeholder="مثال: مجسم الصقر" />
             <Input label="الوصف" value={description} onChangeText={setDescription} placeholder="وصف العمل الفني..." multiline numberOfLines={3} />
@@ -341,13 +284,7 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.base },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full, paddingHorizontal: Spacing.md, paddingVertical: 8, borderWidth: 1, borderColor: Colors.border },
   backBtnText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
-  imgSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xs },
-  imgHint: { fontSize: 10, color: Colors.textMuted, fontStyle: 'italic' },
   sectionLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm },
-  imagesScroll: { marginBottom: Spacing.base },
-  imagesRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: 2, alignItems: 'center' },
-  addImageBtn: { width: 80, height: 90, borderRadius: Radius.md, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  addImageText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center' },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   manageCatBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primarySurface, borderRadius: Radius.full, paddingHorizontal: Spacing.md, paddingVertical: 6, borderWidth: 1, borderColor: Colors.primary + '60' },
   manageCatBtnText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },

@@ -19,3 +19,5 @@ export { BackupModal } from './feature/BackupModal';
 export { ArtworkCostModal } from './feature/ArtworkCostModal';
 export { AdminLoginScreen } from './feature/AdminLoginScreen';
 export { MigrationModal } from './feature/MigrationModal';
+export { CloudImagePicker, toUploadedImages, toUriArray } from './feature/CloudImagePicker';
+export type { UploadedImage } from './feature/CloudImagePicker';
