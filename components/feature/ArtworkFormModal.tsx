@@ -67,6 +67,7 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [available, setAvailable] = useState(true);
   const [showPriceToCustomer, setShowPriceToCustomer] = useState(true);
+  const [visibleToVisitors, setVisibleToVisitors] = useState(true);
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,6 +89,7 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
       setYear(artwork.year || new Date().getFullYear().toString());
       setAvailable(artwork.available !== false);
       setShowPriceToCustomer((artwork as any).showPriceToCustomer !== false);
+      setVisibleToVisitors((artwork as any).visibleToVisitors !== false);
       const existingImages = artwork.images?.length ? artwork.images : (artwork.image ? [artwork.image] : []);
       setUploadedImages(toUploadedImages(existingImages));
       setSelectedMaterials(artwork.materialIds || []);
@@ -98,7 +100,7 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
       setDiameter(''); setThickness(''); setWeight('');
       setWeightUnit('kg'); setDimensionUnit('cm'); setQuantity('');
       setYear(new Date().getFullYear().toString());
-      setAvailable(true); setShowPriceToCustomer(true); setUploadedImages([]); setSelectedMaterials([]);
+      setAvailable(true); setShowPriceToCustomer(true); setVisibleToVisitors(true); setUploadedImages([]); setSelectedMaterials([]);
     }
   }, [artwork, visible, artworkCategories]);
 
@@ -124,7 +126,7 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
         height, width, length, depth, diameter, thickness,
         weight, weightUnit, dimensionUnit, quantity,
         dimensions: buildDimensions(),
-        year: year.trim(), available, showPriceToCustomer,
+        year: year.trim(), available, showPriceToCustomer, visibleToVisitors,
         image: finalUris[0] || null, images: finalUris, materialIds: selectedMaterials,
       });
       setLoading(false);
@@ -267,6 +269,13 @@ export function ArtworkFormModal({ visible, artwork, materials, artworkCategorie
             <View style={[styles.switchRow, { marginTop: -Spacing.sm }]}>
               <Switch value={showPriceToCustomer} onValueChange={setShowPriceToCustomer} trackColor={{ false: Colors.border, true: Colors.infoSurface }} thumbColor={showPriceToCustomer ? Colors.info : Colors.textMuted} />
               <Text style={styles.switchLabel}>{showPriceToCustomer ? 'يظهر السعر للعميل' : 'السعر مخفي عن العميل'}</Text>
+            </View>
+            <View style={[styles.switchRow, { marginTop: -Spacing.sm }]}>
+              <Switch value={visibleToVisitors} onValueChange={setVisibleToVisitors} trackColor={{ false: Colors.border, true: '#E8F5E9' }} thumbColor={visibleToVisitors ? Colors.success : Colors.textMuted} />
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={styles.switchLabel}>{visibleToVisitors ? 'ظاهر للزوار ✓' : 'مخفي عن الزوار'}</Text>
+                <Text style={{ fontSize: 10, color: Colors.textMuted, textAlign: 'right', marginTop: 2 }}>{visibleToVisitors ? 'يظهر هذا العمل في معرض الزوار' : 'يظهر في وضع المشرف فقط'}</Text>
+              </View>
             </View>
 
             <View style={styles.btnRow}>
