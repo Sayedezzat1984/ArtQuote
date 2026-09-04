@@ -2,14 +2,27 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform } from 'react-native';
+import { Platform, useMemo } from 'react-native';
 import { Colors, FontSize } from '@/constants/theme';
 import { isTablet } from '@/constants/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useApp } from '@/hooks/useApp';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { productionOrders } = useApp();
+
+  const urgentOrdersCount = useMemo(() => {
+    const now = new Date();
+    const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    return productionOrders.filter(o => {
+      if (!o.deliveryDate) return false;
+      if (['delivered', 'cancelled'].includes(o.status)) return false;
+      const delivery = new Date(o.deliveryDate);
+      return delivery <= in3Days;
+    }).length;
+  }, [productionOrders]);
 
   const tabBarHeight = isTablet ? 72 : 60;
   const tabBarStyle = {
@@ -79,6 +92,8 @@ export default function TabLayout() {
         options={{
           title: 'التصنيع',
           tabBarIcon: ({ color, size }) => <MaterialIcons name="precision-manufacturing" size={size} color={color} />,
+          tabBarBadge: urgentOrdersCount > 0 ? urgentOrdersCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: Colors.error, fontSize: 10, minWidth: 16, height: 16 },
         }}
       />
     </Tabs>
