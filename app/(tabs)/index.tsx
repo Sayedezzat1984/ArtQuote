@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const [showBackup, setShowBackup] = useState(false);
   const [showMigration, setShowMigration] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
-  const syncStatus = (useApp() as any).syncStatus || 'idle';
+  const { syncStatus, pendingOpsCount, isOnline, forceSyncNow } = useApp() as any;
 
   const totalRevenue = quotes.filter(q => q.status === 'accepted').reduce((s, q) => s + q.total, 0);
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
@@ -56,9 +56,20 @@ export default function HomeScreen() {
               <View style={styles.syncBadge}>
                 <MaterialIcons name="sync" size={14} color={Colors.primary} />
               </View>
+            ) : syncStatus === 'offline' ? (
+              <View style={[styles.syncBadge, { backgroundColor: Colors.warningSurface }]}>
+                <MaterialIcons name="cloud-off" size={14} color={Colors.warning} />
+              </View>
             ) : syncStatus === 'error' ? (
               <View style={[styles.syncBadge, { backgroundColor: Colors.errorSurface }]}>
-                <MaterialIcons name="cloud-off" size={14} color={Colors.error} />
+                <MaterialIcons name="error-outline" size={14} color={Colors.error} />
+              </View>
+            ) : syncStatus === 'synced' ? (
+              <View style={[styles.syncBadge, { backgroundColor: Colors.successSurface }]}>
+                <MaterialIcons name="cloud-done" size={14} color={Colors.success} />
+                {pendingOpsCount > 0 ? (
+                  <View style={styles.pendingDot}><Text style={styles.pendingDotText}>{pendingOpsCount}</Text></View>
+                ) : null}
               </View>
             ) : null}
             {isAdmin ? (
@@ -287,7 +298,9 @@ const styles = StyleSheet.create({
   headerRight: { alignItems: 'flex-end' },
   headerLeft: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', marginTop: 4 },
   iconBtn: { width: isTablet ? 44 : 38, height: isTablet ? 44 : 38, borderRadius: isTablet ? 22 : 19, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
-  syncBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.primary + '40' },
+  syncBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: Colors.primarySurface, borderWidth: 1, borderColor: Colors.primary + '40', gap: 3 },
+  pendingDot: { minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.warning, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  pendingDotText: { fontSize: 9, color: '#fff', fontWeight: '700' },
   adminBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.warningSurface, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.warning + '40', justifyContent: 'center' },
   adminBannerTxt: { fontSize: FontSize.xs, color: Colors.warning, fontWeight: FontWeight.semibold },
   clientBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.infoSurface, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.info + '40', justifyContent: 'center' },

@@ -2,7 +2,9 @@
 import React, { createContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  listenCollection, upsertDoc, removeDoc, batchUpsert, fetchOnce, uid,
+  listenCollection, upsertDocSilent, upsertDoc, removeDoc,
+  batchUpsert, fetchOnce, uid, flushQueue, loadQueue,
+  onConnectivityChange, getIsOnline,
 } from '@/services/firestoreService';
 import { COLLECTIONS } from '@/services/firebase';
 import {
@@ -40,6 +42,7 @@ export interface Artwork {
   images: string[];
   materialIds: string[];
   createdAt: string;
+  updatedAt?: string;
 }
 
 // ─── Material (simple) ────────────────────────────────────────────────────
@@ -418,7 +421,9 @@ interface AppContextType {
   quotes: Quote[];
   materials: Material[];
   loading: boolean;
-  syncStatus: 'idle' | 'syncing' | 'synced' | 'error';
+  syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
+  pendingOpsCount: number;
+  isOnline: boolean;
   artworkCategories: ArtworkCategory[];
   suppliers: Supplier[];
   fullMaterials: FullMaterial[];
@@ -466,8 +471,9 @@ interface AppContextType {
   addExternalManufacturing: (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
   updateExternalManufacturing: (id: string, m: Partial<ExternalManufacturing>) => Promise<void>;
   deleteExternalManufacturing: (id: string) => Promise<void>;
-  restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => Promise<void>;
+  restoreBackup: (data: Record<string, any[]>) => Promise<void>;
   migrateLocalToFirestore: () => Promise<{ migrated: number; skipped: number }>;
+  forceSyncNow: () => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -510,57 +516,100 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [internalManufacturing, setInternalManufacturing] = useState<InternalManufacturing[]>([]);
   const [externalManufacturing, setExternalManufacturing] = useState<ExternalManufacturing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline' | 'error'>('idle');
+  const [pendingOpsCount, setPendingOpsCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
 
-  // Track Firestore unsubscribers
   const unsubsRef = useRef<(() => void)[]>([]);
+  const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Monitor pending ops count ──────────────────────────────────────────
+  const refreshPendingCount = useCallback(async () => {
+    const queue = await loadQueue();
+    setPendingOpsCount(queue.length);
+  }, []);
+
+  // ─── Monitor connectivity ────────────────────────────────────────────────
+  useEffect(() => {
+    const unsub = onConnectivityChange((online) => {
+      setIsOnline(online);
+      if (online) {
+        setSyncStatus('syncing');
+        flushQueue().then(() => {
+          setSyncStatus('synced');
+          refreshPendingCount();
+        }).catch(() => setSyncStatus('error'));
+      } else {
+        setSyncStatus('offline');
+        refreshPendingCount();
+      }
+    });
+    return () => unsub();
+  }, [refreshPendingCount]);
 
   useEffect(() => {
     let mounted = true;
     setSyncStatus('syncing');
 
+    // Load local cache first for instant display
+    loadFromLocal().then(() => {
+      if (mounted) setLoading(false);
+    });
+
     // Subscribe to all Firestore collections in parallel
     const subs: (() => void)[] = [];
 
-    subs.push(listenCollection(COLLECTIONS.artworks, d => { if (mounted) setArtworks(d as Artwork[]); }));
-    subs.push(listenCollection(COLLECTIONS.customers, d => { if (mounted) setCustomers(d as Customer[]); }));
-    subs.push(listenCollection(COLLECTIONS.quotes, d => { if (mounted) setQuotes(d as Quote[]); }));
-    subs.push(listenCollection(COLLECTIONS.fullMaterials, d => { if (mounted) setFullMaterials(d as FullMaterial[]); }));
-    subs.push(listenCollection(COLLECTIONS.suppliers, d => { if (mounted) setSuppliers(d as Supplier[]); }));
-    subs.push(listenCollection(COLLECTIONS.artworkCosts, d => { if (mounted) setArtworkCosts(d as ArtworkCostSheet[]); }));
-    subs.push(listenCollection(COLLECTIONS.workers, d => { if (mounted) setWorkers(d as Worker[]); }));
-    subs.push(listenCollection(COLLECTIONS.productionOrders, d => { if (mounted) setProductionOrders(d as ProductionOrder[]); }));
-    subs.push(listenCollection(COLLECTIONS.internalManufacturing, d => { if (mounted) setInternalManufacturing(d as InternalManufacturing[]); }));
-    subs.push(listenCollection(COLLECTIONS.externalManufacturing, d => { if (mounted) setExternalManufacturing(d as ExternalManufacturing[]); }));
+    const setupListener = (col: string, setter: (d: any[]) => void) => {
+      const unsub = listenCollection(col, d => {
+        if (mounted) {
+          setter(d);
+          setSyncStatus('synced');
+        }
+      }, () => {
+        if (mounted) setSyncStatus('offline');
+      });
+      return unsub;
+    };
 
+    subs.push(setupListener(COLLECTIONS.artworks, setArtworks));
+    subs.push(setupListener(COLLECTIONS.customers, setCustomers));
+    subs.push(setupListener(COLLECTIONS.quotes, setQuotes));
+    subs.push(setupListener(COLLECTIONS.fullMaterials, setFullMaterials));
+    subs.push(setupListener(COLLECTIONS.suppliers, setSuppliers));
+    subs.push(setupListener(COLLECTIONS.artworkCosts, setArtworkCosts));
+    subs.push(setupListener(COLLECTIONS.workers, setWorkers));
+    subs.push(setupListener(COLLECTIONS.productionOrders, setProductionOrders));
+    subs.push(setupListener(COLLECTIONS.internalManufacturing, setInternalManufacturing));
+    subs.push(setupListener(COLLECTIONS.externalManufacturing, setExternalManufacturing));
+
+    // Categories with default seed
     subs.push(listenCollection(COLLECTIONS.categories, d => {
       if (!mounted) return;
       if (d.length > 0) {
         setArtworkCategories(d as ArtworkCategory[]);
       } else {
-        // Initialize default categories in Firestore
         setArtworkCategories(DEFAULT_CATEGORIES);
-        DEFAULT_CATEGORIES.forEach(c => upsertDoc(COLLECTIONS.categories, c.id, c).catch(() => {}));
+        DEFAULT_CATEGORIES.forEach(c => upsertDocSilent(COLLECTIONS.categories, c.id, c));
       }
+      setSyncStatus('synced');
     }, () => {
-      if (mounted) {
-        setSyncStatus('error');
-        // Fallback: load from AsyncStorage
-        loadFromLocal();
-      }
+      if (mounted) setSyncStatus('offline');
     }));
 
     unsubsRef.current = subs;
 
-    // After brief delay, mark as ready
-    const timer = setTimeout(() => {
-      if (mounted) { setLoading(false); setSyncStatus('synced'); }
-    }, 1500);
+    // Mark loaded after timeout
+    loadingTimer.current = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 2000);
+
+    // Flush any pending ops
+    flushQueue().then(() => refreshPendingCount());
 
     return () => {
       mounted = false;
       subs.forEach(u => u());
-      clearTimeout(timer);
+      if (loadingTimer.current) clearTimeout(loadingTimer.current);
     };
   }, []);
 
@@ -572,15 +621,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadCategories(), loadSuppliers(), loadFullMaterials(), loadArtworkCosts(),
         loadWorkers(), loadProductionOrders(), loadInternalManufacturing(), loadExternalManufacturing(),
       ]);
-      setArtworks(a); setCustomers(c); setQuotes(q); setMaterials(m);
-      setSuppliers(sup); setFullMaterials(fm); setArtworkCosts(costs);
-      setWorkers(w); setProductionOrders(orders);
-      setInternalManufacturing(intm); setExternalManufacturing(extm);
-      setArtworkCategories(cats.length > 0 ? cats : DEFAULT_CATEGORIES);
-    } finally {
-      setLoading(false);
-    }
+      setArtworks(prev => prev.length ? prev : a);
+      setCustomers(prev => prev.length ? prev : c);
+      setQuotes(prev => prev.length ? prev : q);
+      setMaterials(m);
+      setSuppliers(prev => prev.length ? prev : sup);
+      setFullMaterials(prev => prev.length ? prev : fm);
+      setArtworkCosts(prev => prev.length ? prev : costs);
+      setWorkers(prev => prev.length ? prev : w);
+      setProductionOrders(prev => prev.length ? prev : orders);
+      setInternalManufacturing(prev => prev.length ? prev : intm);
+      setExternalManufacturing(prev => prev.length ? prev : extm);
+      setArtworkCategories(prev => prev.length ? prev : (cats.length > 0 ? cats : DEFAULT_CATEGORIES));
+    } catch {}
   }
+
+  // ─── Cache to AsyncStorage when data changes ──────────────────────────────
+  useEffect(() => { if (artworks.length) saveArtworks(artworks); }, [artworks]);
+  useEffect(() => { if (customers.length) saveCustomers(customers); }, [customers]);
+  useEffect(() => { if (quotes.length) saveQuotes(quotes); }, [quotes]);
+  useEffect(() => { if (fullMaterials.length) saveFullMaterials(fullMaterials); }, [fullMaterials]);
+  useEffect(() => { if (suppliers.length) saveSuppliers(suppliers); }, [suppliers]);
+  useEffect(() => { if (artworkCosts.length) saveArtworkCosts(artworkCosts); }, [artworkCosts]);
+  useEffect(() => { if (workers.length) saveWorkers(workers); }, [workers]);
+  useEffect(() => { if (productionOrders.length) saveProductionOrders(productionOrders); }, [productionOrders]);
+
+  // ─── Force sync ────────────────────────────────────────────────────────────
+  const forceSyncNow = useCallback(async () => {
+    setSyncStatus('syncing');
+    try {
+      await flushQueue();
+      await refreshPendingCount();
+      setSyncStatus('synced');
+    } catch {
+      setSyncStatus('error');
+    }
+  }, [refreshPendingCount]);
 
   // ─── Migration: local AsyncStorage → Firestore ────────────────────────────
   const migrateLocalToFirestore = useCallback(async (): Promise<{ migrated: number; skipped: number }> => {
@@ -594,12 +670,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const existing = await fetchOnce(col);
         const existingIds = new Set(existing.map((x: any) => x.id));
         const toMigrate = local.filter((x: any) => !existingIds.has(x.id));
-        const alreadyThere = local.length - toMigrate.length;
+        skipped += local.length - toMigrate.length;
         if (toMigrate.length > 0) {
           await batchUpsert(col, toMigrate);
           migrated += toMigrate.length;
         }
-        skipped += alreadyThere;
       } catch {}
     };
 
@@ -618,37 +693,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { migrated, skipped };
   }, []);
 
+  // ─── Helper: mark syncing ─────────────────────────────────────────────────
+  function markSyncing() {
+    if (getIsOnline()) setSyncStatus('syncing');
+    else setSyncStatus('offline');
+  }
+
   // ─── Artwork CRUD ──────────────────────────────────────────────────────────
   const addArtwork = useCallback(async (artwork: Omit<Artwork, 'id' | 'createdAt'>) => {
-    const newItem: Artwork = { ...artwork, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.artworks, newItem.id, newItem);
-  }, []);
+    const now = new Date().toISOString();
+    const newItem: Artwork = { ...artwork, id: uid(), createdAt: now, updatedAt: now };
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.artworks, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateArtwork = useCallback(async (id: string, artwork: Partial<Artwork>) => {
     const existing = artworks.find(a => a.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.artworks, id, { ...existing, ...artwork });
-  }, [artworks]);
+    const updated = { ...existing, ...artwork, updatedAt: new Date().toISOString() };
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.artworks, id, updated);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [artworks, refreshPendingCount]);
 
   const deleteArtwork = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.artworks, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── Customer CRUD ─────────────────────────────────────────────────────────
   const addCustomer = useCallback(async (customer: Omit<Customer, 'id' | 'createdAt'>) => {
     const newItem: Customer = { ...customer, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.customers, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.customers, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateCustomer = useCallback(async (id: string, customer: Partial<Customer>) => {
     const existing = customers.find(c => c.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.customers, id, { ...existing, ...customer });
-  }, [customers]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.customers, id, { ...existing, ...customer });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [customers, refreshPendingCount]);
 
   const deleteCustomer = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.customers, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── Quote CRUD ────────────────────────────────────────────────────────────
   const addQuote = useCallback(async (quote: Omit<Quote, 'id' | 'quoteNumber' | 'createdAt'>) => {
@@ -658,18 +759,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...quote, id: uid(), quoteNumber: `QT-${year}-${num}`,
       createdAt: new Date().toISOString(),
     };
-    await upsertDoc(COLLECTIONS.quotes, newItem.id, newItem);
-  }, [quotes]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.quotes, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [quotes, refreshPendingCount]);
 
   const updateQuote = useCallback(async (id: string, quote: Partial<Quote>) => {
     const existing = quotes.find(q => q.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.quotes, id, { ...existing, ...quote });
-  }, [quotes]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.quotes, id, { ...existing, ...quote });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [quotes, refreshPendingCount]);
 
   const deleteQuote = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.quotes, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── Legacy Material CRUD ──────────────────────────────────────────────────
   const addMaterial = useCallback(async (material: Omit<Material, 'id' | 'createdAt'>) => {
@@ -691,7 +801,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Category CRUD ─────────────────────────────────────────────────────────
   const addArtworkCategory = useCallback(async (name: string) => {
     const newCat: ArtworkCategory = { id: uid(), name: name.trim(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.categories, newCat.id, newCat);
+    await upsertDocSilent(COLLECTIONS.categories, newCat.id, newCat);
   }, []);
 
   const deleteArtworkCategory = useCallback(async (id: string) => {
@@ -701,35 +811,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Supplier CRUD ─────────────────────────────────────────────────────────
   const addSupplier = useCallback(async (s: Omit<Supplier, 'id' | 'createdAt'>) => {
     const newItem: Supplier = { ...s, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.suppliers, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.suppliers, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateSupplier = useCallback(async (id: string, s: Partial<Supplier>) => {
     const existing = suppliers.find(x => x.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.suppliers, id, { ...existing, ...s });
-  }, [suppliers]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.suppliers, id, { ...existing, ...s });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [suppliers, refreshPendingCount]);
 
   const deleteSupplier = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.suppliers, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── Full Material CRUD ────────────────────────────────────────────────────
   const addFullMaterial = useCallback(async (m: Omit<FullMaterial, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
     const newItem: FullMaterial = { ...m, id: uid(), createdAt: now, updatedAt: now };
-    await upsertDoc(COLLECTIONS.fullMaterials, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.fullMaterials, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateFullMaterial = useCallback(async (id: string, m: Partial<FullMaterial>) => {
     const existing = fullMaterials.find(x => x.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.fullMaterials, id, { ...existing, ...m, updatedAt: new Date().toISOString() });
-  }, [fullMaterials]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.fullMaterials, id, { ...existing, ...m, updatedAt: new Date().toISOString() });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [fullMaterials, refreshPendingCount]);
 
   const deleteFullMaterial = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.fullMaterials, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateMaterialPrice = useCallback(async (id: string, newPrice: number, supplierId: string, supplierName: string, notes: string) => {
     const x = fullMaterials.find(m => m.id === id);
@@ -739,31 +867,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
       date: new Date().toISOString(), notes,
     };
     const updated = {
-      ...x,
-      unitPrice: newPrice,
-      lastPurchasePrice: newPrice,
+      ...x, unitPrice: newPrice, lastPurchasePrice: newPrice,
       averagePrice: x.averagePrice ? (x.averagePrice + newPrice) / 2 : newPrice,
       priceHistory: [historyEntry, ...(x.priceHistory || [])],
       updatedAt: new Date().toISOString(),
     };
-    await upsertDoc(COLLECTIONS.fullMaterials, id, updated);
-  }, [fullMaterials]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.fullMaterials, id, updated);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [fullMaterials, refreshPendingCount]);
 
   // ─── Artwork Cost CRUD ─────────────────────────────────────────────────────
   const addArtworkCost = useCallback(async (cost: Omit<ArtworkCostSheet, 'id' | 'createdAt'>) => {
     const newItem: ArtworkCostSheet = { ...cost, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.artworkCosts, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.artworkCosts, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateArtworkCost = useCallback(async (id: string, cost: Partial<ArtworkCostSheet>) => {
     const existing = artworkCosts.find(c => c.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.artworkCosts, id, { ...existing, ...cost });
-  }, [artworkCosts]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.artworkCosts, id, { ...existing, ...cost });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [artworkCosts, refreshPendingCount]);
 
   const deleteArtworkCost = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.artworkCosts, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const getArtworkCosts = useCallback((artworkId: string) => {
     return artworkCosts.filter(c => c.artworkId === artworkId).sort((a, b) => b.version - a.version);
@@ -778,39 +916,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Worker CRUD ───────────────────────────────────────────────────────────
   const addWorker = useCallback(async (w: Omit<Worker, 'id' | 'createdAt'>) => {
     const newItem: Worker = { ...w, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.workers, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.workers, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateWorker = useCallback(async (id: string, w: Partial<Worker>) => {
     const existing = workers.find(x => x.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.workers, id, { ...existing, ...w });
-  }, [workers]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.workers, id, { ...existing, ...w });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [workers, refreshPendingCount]);
 
   const deleteWorker = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.workers, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── Production Order CRUD ─────────────────────────────────────────────────
   const addProductionOrder = useCallback(async (o: Omit<ProductionOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
     const num = (productionOrders.length + 1).toString().padStart(4, '0');
     const year = new Date().getFullYear();
-    const newItem: ProductionOrder = {
-      ...o, id: uid(), orderNumber: `PO-${year}-${num}`, createdAt: now, updatedAt: now,
-    };
-    await upsertDoc(COLLECTIONS.productionOrders, newItem.id, newItem);
-  }, [productionOrders]);
+    const newItem: ProductionOrder = { ...o, id: uid(), orderNumber: `PO-${year}-${num}`, createdAt: now, updatedAt: now };
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.productionOrders, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [productionOrders, refreshPendingCount]);
 
   const updateProductionOrder = useCallback(async (id: string, o: Partial<ProductionOrder>) => {
     const existing = productionOrders.find(x => x.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.productionOrders, id, { ...existing, ...o, updatedAt: new Date().toISOString() });
-  }, [productionOrders]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.productionOrders, id, { ...existing, ...o, updatedAt: new Date().toISOString() });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [productionOrders, refreshPendingCount]);
 
   const deleteProductionOrder = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.productionOrders, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const getOrdersByArtwork = useCallback((artworkId: string) => {
     return productionOrders.filter(o => o.artworkId === artworkId);
@@ -819,51 +973,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Internal Manufacturing CRUD ───────────────────────────────────────────
   const addInternalManufacturing = useCallback(async (m: Omit<InternalManufacturing, 'id' | 'createdAt'>) => {
     const newItem: InternalManufacturing = { ...m, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.internalManufacturing, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.internalManufacturing, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateInternalManufacturing = useCallback(async (id: string, m: Partial<InternalManufacturing>) => {
     const existing = internalManufacturing.find(x => x.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.internalManufacturing, id, { ...existing, ...m });
-  }, [internalManufacturing]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.internalManufacturing, id, { ...existing, ...m });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [internalManufacturing, refreshPendingCount]);
 
   const deleteInternalManufacturing = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.internalManufacturing, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── External Manufacturing CRUD ───────────────────────────────────────────
   const addExternalManufacturing = useCallback(async (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => {
     const newItem: ExternalManufacturing = { ...m, id: uid(), createdAt: new Date().toISOString() };
-    await upsertDoc(COLLECTIONS.externalManufacturing, newItem.id, newItem);
-  }, []);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.externalManufacturing, newItem.id, newItem);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   const updateExternalManufacturing = useCallback(async (id: string, m: Partial<ExternalManufacturing>) => {
     const existing = externalManufacturing.find(x => x.id === id);
     if (!existing) return;
-    await upsertDoc(COLLECTIONS.externalManufacturing, id, { ...existing, ...m });
-  }, [externalManufacturing]);
+    markSyncing();
+    await upsertDocSilent(COLLECTIONS.externalManufacturing, id, { ...existing, ...m });
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [externalManufacturing, refreshPendingCount]);
 
   const deleteExternalManufacturing = useCallback(async (id: string) => {
+    markSyncing();
     await removeDoc(COLLECTIONS.externalManufacturing, id);
-  }, []);
+    setSyncStatus(getIsOnline() ? 'synced' : 'offline');
+    await refreshPendingCount();
+  }, [refreshPendingCount]);
 
   // ─── Backup restore ────────────────────────────────────────────────────────
-  const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => {
-    await Promise.all([
-      batchUpsert(COLLECTIONS.artworks, data.artworks),
-      batchUpsert(COLLECTIONS.customers, data.customers),
-      batchUpsert(COLLECTIONS.quotes, data.quotes),
-    ]);
-    if (data.materials) {
-      setMaterials(data.materials);
-      await saveMaterials(data.materials);
+  const restoreBackup = useCallback(async (data: Record<string, any[]>) => {
+    setSyncStatus('syncing');
+    try {
+      for (const [col, items] of Object.entries(data)) {
+        if (Array.isArray(items) && items.length > 0) {
+          await batchUpsert(col, items);
+        }
+      }
+      setSyncStatus('synced');
+    } catch {
+      setSyncStatus('error');
     }
   }, []);
 
   return (
     <AppContext.Provider value={{
       artworks, customers, quotes, materials, loading, syncStatus,
+      pendingOpsCount, isOnline,
       artworkCategories, suppliers, fullMaterials, artworkCosts,
       workers, productionOrders, internalManufacturing, externalManufacturing,
       addArtwork, updateArtwork, deleteArtwork,
@@ -878,7 +1053,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
       addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
       addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
-      restoreBackup, migrateLocalToFirestore,
+      restoreBackup, migrateLocalToFirestore, forceSyncNow,
     }}>
       {children}
     </AppContext.Provider>

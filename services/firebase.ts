@@ -63,6 +63,11 @@ export const COLLECTIONS = {
   internalManufacturing: 'internalManufacturing',
   externalManufacturing: 'externalManufacturing',
   settings: 'settings',
+  payments: 'payments',
+  expenses: 'expenses',
+  packaging: 'packaging',
+  transport: 'transport',
+  catalog: 'catalog',
 } as const;
 
 export const ADMIN_EMAIL = 'engsayedezzat@gmail.com';
