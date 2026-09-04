@@ -28,8 +28,18 @@ type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
 export default function GuestGalleryScreen() {
   const { artworks, artworkCategories, forceSyncNow } = useApp() as any;
   const { signOut } = useAuth();
-  const { notificationsEnabled, requestNotificationPermission } = useVisitor();
+  const {
+    isRegistered, isLoadingVisitor,
+    notificationsEnabled, requestNotificationPermission,
+  } = useVisitor();
   const router = useRouter();
+
+  // ── Redirect to register if not yet registered ──────────────────────────
+  useEffect(() => {
+    if (!isLoadingVisitor && !isRegistered) {
+      router.replace('/(guest)/register');
+    }
+  }, [isLoadingVisitor, isRegistered]);
 
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
@@ -61,7 +71,7 @@ export default function GuestGalleryScreen() {
     }
   }, [visibleArtworks]);
 
-  // Check notification banner
+  // Check notification banner after short delay
   useEffect(() => {
     const timer = setTimeout(async () => {
       const enabled = await areNotificationsEnabled();
@@ -161,6 +171,24 @@ export default function GuestGalleryScreen() {
       return matchSearch && matchCat;
     });
   }, [visibleArtworks, search, catFilter]);
+
+  // Show loading while checking registration
+  if (isLoadingVisitor) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  // Don't render gallery until registered (redirect is in-flight)
+  if (!isRegistered) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   const toastMessage =
     refreshStatus === 'new' ? 'تم إضافة أعمال جديدة ✦' :
@@ -358,6 +386,12 @@ export default function GuestGalleryScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
