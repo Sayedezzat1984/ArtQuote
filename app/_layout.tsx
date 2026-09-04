@@ -10,21 +10,22 @@ import { PinScreen } from '@/components/feature/PinScreen';
 import { useApp } from '@/hooks/useApp';
 import { Colors, FontSize, FontWeight } from '@/constants/theme';
 
-// ── Loading gate: waits for AppProvider to finish AsyncStorage init ──────────
+// ── Loading gate: shows overlay while AppProvider initializes ────────────────
 function AppLoadingGate({ children }: { children: React.ReactNode }) {
   const { loading } = useApp();
 
-  if (loading) {
-    return (
-      <View style={ls.container}>
-        <Text style={ls.brand}>Sayed Ezzat</Text>
-        <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
-        <Text style={ls.sub}>جاري تحميل البيانات...</Text>
-      </View>
-    );
-  }
-
-  return <>{children}</>;
+  return (
+    <View style={{ flex: 1 }}>
+      {children}
+      {loading ? (
+        <View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, ls.container]}>
+          <Text style={ls.brand}>Sayed Ezzat</Text>
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
+          <Text style={ls.sub}>جاري تحميل البيانات...</Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 const ls = StyleSheet.create({
