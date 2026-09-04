@@ -1,5 +1,6 @@
 // Powered by OnSpace.AI
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadArtworks, saveArtworks, loadCustomers, saveCustomers, loadQuotes, saveQuotes, loadMaterials, saveMaterials, loadCategories, saveCategories } from '@/services/storage';
 import { mockArtworks, mockCustomers, mockQuotes } from '@/services/mockData';
 
@@ -112,6 +113,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function init() {
       try {
+        // Clear all stored data on first run after reset
+        const cleared = await AsyncStorage.getItem('data_cleared_v1');
+        if (!cleared) {
+          await AsyncStorage.multiRemove(['artworks_v2', 'customers_v1', 'quotes_v1', 'materials_v1']);
+          await AsyncStorage.setItem('data_cleared_v1', '1');
+        }
         const [storedArtworks, storedCustomers, storedQuotes, storedMaterials, storedCategories] = await Promise.all([
           loadArtworks(),
           loadCustomers(),
@@ -119,10 +126,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           loadMaterials(),
           loadCategories(),
         ]);
-        setArtworks(storedArtworks.length > 0 ? storedArtworks : mockArtworks);
-        setCustomers(storedCustomers.length > 0 ? storedCustomers : mockCustomers);
-        setQuotes(storedQuotes.length > 0 ? storedQuotes : mockQuotes);
-        setMaterials(storedMaterials.length > 0 ? storedMaterials : []);
+        setArtworks(storedArtworks);
+        setCustomers(storedCustomers);
+        setQuotes(storedQuotes);
+        setMaterials(storedMaterials);
         const defaultCategories: ArtworkCategory[] = [
           { id: '1', name: 'نحت جداريات', createdAt: new Date().toISOString() },
           { id: '2', name: 'نحت حر', createdAt: new Date().toISOString() },
@@ -136,9 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setArtworkCategories(defaultCategories);
           await saveCategories(defaultCategories);
         }
-        if (storedArtworks.length === 0) await saveArtworks(mockArtworks);
-        if (storedCustomers.length === 0) await saveCustomers(mockCustomers);
-        if (storedQuotes.length === 0) await saveQuotes(mockQuotes);
+
       } finally {
         setLoading(false);
       }
