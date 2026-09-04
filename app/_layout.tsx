@@ -14,18 +14,17 @@ import { Colors, FontSize, FontWeight } from '@/constants/theme';
 function AppLoadingGate({ children }: { children: React.ReactNode }) {
   const { loading } = useApp();
 
-  return (
-    <View style={{ flex: 1 }}>
-      {children}
-      {loading ? (
-        <View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, ls.container]}>
-          <Text style={ls.brand}>Sayed Ezzat</Text>
-          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
-          <Text style={ls.sub}>جاري تحميل البيانات...</Text>
-        </View>
-      ) : null}
-    </View>
-  );
+  if (loading) {
+    return (
+      <View style={ls.container}>
+        <Text style={ls.brand}>Sayed Ezzat</Text>
+        <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
+        <Text style={ls.sub}>جاري تحميل البيانات...</Text>
+      </View>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 const ls = StyleSheet.create({
