@@ -1,36 +1,61 @@
 // Powered by OnSpace.AI
 import { useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlertProvider } from '@/template';
 import { AppProvider } from '@/contexts/AppContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { PinScreen } from '@/components/feature/PinScreen';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { AdminLoginScreen } from '@/components/feature/AdminLoginScreen';
+import { Colors } from '@/constants/theme';
 
-export default function RootLayout() {
-  const [authenticated, setAuthenticated] = useState(false);
+// ─── Inner layout: consumes AuthContext ───────────────────────────────────
+function AppShell() {
+  const { appMode } = useAuth();
 
-  if (!authenticated) {
+  if (appMode === 'loading') {
     return (
-      <AlertProvider>
-        <SafeAreaProvider>
-          <PinScreen onSuccess={() => setAuthenticated(true)} />
-        </SafeAreaProvider>
-      </AlertProvider>
+      <View style={styles.splash}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
     );
   }
 
+  if (appMode === 'unauthenticated') {
+    return <AdminLoginScreen />;
+  }
+
+  // appMode === 'admin' or 'client' — show the full app
+  return (
+    <LanguageProvider>
+      <AppProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </AppProvider>
+    </LanguageProvider>
+  );
+}
+
+// ─── Root layout ──────────────────────────────────────────────────────────
+export default function RootLayout() {
   return (
     <AlertProvider>
       <SafeAreaProvider>
-        <LanguageProvider>
-          <AppProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-          </AppProvider>
-        </LanguageProvider>
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
       </SafeAreaProvider>
     </AlertProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

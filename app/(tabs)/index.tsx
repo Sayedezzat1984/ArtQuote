@@ -7,17 +7,22 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/hooks/useApp';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { BackupModal } from '@/components/feature/BackupModal';
 import { QuoteDetailModal } from '@/components/feature/QuoteDetailModal';
+import { MigrationModal } from '@/components/feature/MigrationModal';
 import { Quote } from '@/contexts/AppContext';
 import { isTablet, pagePadding, contentMaxWidth } from '@/constants/responsive';
 
 export default function HomeScreen() {
-  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts } = useApp();
+  const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts } = useApp() as any;
   const { t, currency, lang, toggleLang } = useLanguage();
+  const { isAdmin, signOut, appMode } = useAuth();
   const router = useRouter();
   const [showBackup, setShowBackup] = useState(false);
+  const [showMigration, setShowMigration] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
+  const syncStatus = (useApp() as any).syncStatus || 'idle';
 
   const totalRevenue = quotes.filter(q => q.status === 'accepted').reduce((s, q) => s + q.total, 0);
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
@@ -46,9 +51,29 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
+            {/* Sync status indicator */}
+            {syncStatus === 'syncing' ? (
+              <View style={styles.syncBadge}>
+                <MaterialIcons name="sync" size={14} color={Colors.primary} />
+              </View>
+            ) : syncStatus === 'error' ? (
+              <View style={[styles.syncBadge, { backgroundColor: Colors.errorSurface }]}>
+                <MaterialIcons name="cloud-off" size={14} color={Colors.error} />
+              </View>
+            ) : null}
+            {isAdmin ? (
+              <Pressable onPress={() => setShowMigration(true)} style={styles.iconBtn}>
+                <MaterialIcons name="cloud-upload" size={18} color={Colors.primary} />
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => setShowBackup(true)} style={styles.iconBtn}>
-              <MaterialIcons name="cloud-upload" size={20} color={Colors.textSecondary} />
+              <MaterialIcons name="backup" size={20} color={Colors.textSecondary} />
             </Pressable>
+            {isAdmin ? (
+              <Pressable onPress={signOut} style={[styles.iconBtn, { backgroundColor: Colors.errorSurface }]}>
+                <MaterialIcons name="logout" size={18} color={Colors.error} />
+              </Pressable>
+            ) : null}
             <Pressable onPress={toggleLang} style={styles.langBtn}>
               <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'ع'}</Text>
             </Pressable>
@@ -58,6 +83,19 @@ export default function HomeScreen() {
             <Text style={styles.subtitle}>{t('dashboard')}</Text>
           </View>
         </View>
+
+        {/* Admin / Client mode banner */}
+        {isAdmin ? (
+          <View style={styles.adminBanner}>
+            <MaterialIcons name="admin-panel-settings" size={14} color={Colors.warning} />
+            <Text style={styles.adminBannerTxt}>وضع المشرف — صلاحيات كاملة</Text>
+          </View>
+        ) : appMode === 'client' ? (
+          <View style={styles.clientBanner}>
+            <MaterialIcons name="visibility" size={14} color={Colors.info} />
+            <Text style={styles.clientBannerTxt}>وضع العرض فقط — زائر</Text>
+          </View>
+        ) : null}
 
         {/* Revenue Card */}
         <View style={styles.revenueCard}>
@@ -235,6 +273,7 @@ export default function HomeScreen() {
       </ScrollView>
 
       <BackupModal visible={showBackup} onClose={() => setShowBackup(false)} />
+      <MigrationModal visible={showMigration} onClose={() => setShowMigration(false)} />
       <QuoteDetailModal visible={selectedQuote !== null} quote={selectedQuote} artworks={artworks} customers={customers} onClose={() => setSelectedQuote(null)} onEdit={() => { setSelectedQuote(null); router.push('/(tabs)/quotes'); }} />
     </SafeAreaView>
   );
@@ -248,6 +287,11 @@ const styles = StyleSheet.create({
   headerRight: { alignItems: 'flex-end' },
   headerLeft: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', marginTop: 4 },
   iconBtn: { width: isTablet ? 44 : 38, height: isTablet ? 44 : 38, borderRadius: isTablet ? 22 : 19, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  syncBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.primary + '40' },
+  adminBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.warningSurface, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.warning + '40', justifyContent: 'center' },
+  adminBannerTxt: { fontSize: FontSize.xs, color: Colors.warning, fontWeight: FontWeight.semibold },
+  clientBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.infoSurface, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.info + '40', justifyContent: 'center' },
+  clientBannerTxt: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.semibold },
   langBtn: { width: isTablet ? 44 : 38, height: isTablet ? 44 : 38, borderRadius: isTablet ? 22 : 19, backgroundColor: Colors.primarySurface, borderWidth: 1, borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
   langBtnText: { fontSize: isTablet ? FontSize.base : FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
   greeting: { fontSize: isTablet ? FontSize.xxxl : FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },

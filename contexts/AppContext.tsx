@@ -1,15 +1,16 @@
 // Powered by OnSpace.AI
-import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  listenCollection, upsertDoc, removeDoc, batchUpsert, fetchOnce, uid,
+} from '@/services/firestoreService';
+import { COLLECTIONS } from '@/services/firebase';
 import {
   loadArtworks, saveArtworks, loadCustomers, saveCustomers,
   loadQuotes, saveQuotes, loadMaterials, saveMaterials,
-  loadCategories, saveCategories,
-  loadSuppliers, saveSuppliers,
-  loadFullMaterials, saveFullMaterials,
-  loadArtworkCosts, saveArtworkCosts,
-  loadWorkers, saveWorkers,
-  loadProductionOrders, saveProductionOrders,
+  loadCategories, saveCategories, loadSuppliers, saveSuppliers,
+  loadFullMaterials, saveFullMaterials, loadArtworkCosts, saveArtworkCosts,
+  loadWorkers, saveWorkers, loadProductionOrders, saveProductionOrders,
   loadInternalManufacturing, saveInternalManufacturing,
   loadExternalManufacturing, saveExternalManufacturing,
 } from '@/services/storage';
@@ -128,7 +129,7 @@ export interface Supplier {
 export interface Worker {
   id: string;
   name: string;
-  craft: string; // e.g. نجار، بياض، فيبرجلاس
+  craft: string;
   dailyWage: number;
   phone: string;
   notes: string;
@@ -143,7 +144,7 @@ export interface ManufacturingStage {
   order: number;
 }
 
-// ─── Material Item in Cost Sheet ──────────────────────────────────────────
+// ─── Cost items ───────────────────────────────────────────────────────────
 export interface CostMaterialItem {
   id: string;
   materialId: string;
@@ -160,7 +161,6 @@ export interface CostMaterialItem {
   notes: string;
 }
 
-// ─── Labor Record ─────────────────────────────────────────────────────────
 export interface LaborRecord {
   id: string;
   workerId: string;
@@ -171,12 +171,11 @@ export interface LaborRecord {
   numWorkers: number;
   numDays: number;
   dailyWage: number;
-  isBatchCost: boolean; // false = per piece, true = fixed for whole batch
+  isBatchCost: boolean;
   total: number;
   notes: string;
 }
 
-// ─── External Labor (مصنعيات) ─────────────────────────────────────────────
 export interface ExternalLaborRecord {
   id: string;
   serviceName: string;
@@ -190,7 +189,6 @@ export interface ExternalLaborRecord {
   notes: string;
 }
 
-// ─── Transport Record ─────────────────────────────────────────────────────
 export interface TransportRecord {
   id: string;
   description: string;
@@ -202,12 +200,11 @@ export interface TransportRecord {
   unloadingCost: number;
   additionalCost: number;
   total: number;
-  assignedTo: string; // 'materials' | 'manufacturing' | 'delivery' | 'installation' | stageId
+  assignedTo: string;
   includedInManufacturing: boolean;
   notes: string;
 }
 
-// ─── Packaging Record ─────────────────────────────────────────────────────
 export interface PackagingRecord {
   id: string;
   packagingType: string;
@@ -223,7 +220,6 @@ export interface PackagingRecord {
   notes: string;
 }
 
-// ─── Other Expense ────────────────────────────────────────────────────────
 export interface OtherExpense {
   id: string;
   name: string;
@@ -303,7 +299,6 @@ export interface ProductionOrder {
   packagingRecords: PackagingRecord[];
   otherExpenses: OtherExpense[];
   externalManufacturingIds: string[];
-  // Costs
   totalMaterialCost: number;
   totalLaborCost: number;
   totalExternalLaborCost: number;
@@ -317,7 +312,6 @@ export interface ProductionOrder {
   taxAmount: number;
   totalCostAfterTax: number;
   costPerPiece: number;
-  // Pricing
   profitPercentage: number;
   profitAmount: number;
   suggestedSellingPrice: number;
@@ -329,26 +323,19 @@ export interface ProductionOrder {
   updatedAt: string;
 }
 
-// ─── Artwork Cost Sheet (enhanced) ────────────────────────────────────────
+// ─── Artwork Cost Sheet ────────────────────────────────────────────────────
 export interface ArtworkCostSheet {
   id: string;
   artworkId: string;
   version: number;
   date: string;
   productionQuantity: number;
-  // Material items
   materialItems: CostMaterialItem[];
-  // Labor
   laborRecords: LaborRecord[];
-  // External labor (مصنعيات)
   externalLaborRecords: ExternalLaborRecord[];
-  // Transport
   transportRecords: TransportRecord[];
-  // Packaging
   packagingRecords: PackagingRecord[];
-  // Other expenses
   otherExpenses: OtherExpense[];
-  // Additional costs (legacy simple fields)
   laborCost: number;
   externalManufacturingCost: number;
   paintingCost: number;
@@ -358,7 +345,6 @@ export interface ArtworkCostSheet {
   installationCost: number;
   otherCost: number;
   emergencyCost: number;
-  // Totals
   totalMaterialCost: number;
   totalLaborCost: number;
   totalExternalLaborCost: number;
@@ -367,12 +353,10 @@ export interface ArtworkCostSheet {
   totalOtherExpensesCost: number;
   totalProductionCost: number;
   costPerPiece: number;
-  // Tax
   applyTax: boolean;
   taxPercentage: number;
   taxAmount: number;
   totalCostAfterTax: number;
-  // Pricing
   profitPercentage: number;
   profitAmount: number;
   suggestedPrice: number;
@@ -381,7 +365,6 @@ export interface ArtworkCostSheet {
   finalPrice: number;
   deliveryCost: number;
   installationPriceCost: number;
-  // Settings
   showPriceToCustomer: boolean;
   notes: string;
   createdAt: string;
@@ -428,13 +411,14 @@ export interface Quote {
   validUntil: string;
 }
 
-// ─── Context Type ──────────────────────────────────────────────────────────
+// ─── Context type ──────────────────────────────────────────────────────────
 interface AppContextType {
   artworks: Artwork[];
   customers: Customer[];
   quotes: Quote[];
   materials: Material[];
   loading: boolean;
+  syncStatus: 'idle' | 'syncing' | 'synced' | 'error';
   artworkCategories: ArtworkCategory[];
   suppliers: Supplier[];
   fullMaterials: FullMaterial[];
@@ -443,59 +427,47 @@ interface AppContextType {
   productionOrders: ProductionOrder[];
   internalManufacturing: InternalManufacturing[];
   externalManufacturing: ExternalManufacturing[];
-  // Artwork CRUD
-  addArtwork: (artwork: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
-  updateArtwork: (id: string, artwork: Partial<Artwork>) => Promise<void>;
+  addArtwork: (a: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
+  updateArtwork: (id: string, a: Partial<Artwork>) => Promise<void>;
   deleteArtwork: (id: string) => Promise<void>;
-  // Customer CRUD
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<void>;
-  updateCustomer: (id: string, customer: Partial<Customer>) => Promise<void>;
+  addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => Promise<void>;
+  updateCustomer: (id: string, c: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
-  // Quote CRUD
-  addQuote: (quote: Omit<Quote, 'id' | 'quoteNumber' | 'createdAt'>) => Promise<void>;
-  updateQuote: (id: string, quote: Partial<Quote>) => Promise<void>;
+  addQuote: (q: Omit<Quote, 'id' | 'quoteNumber' | 'createdAt'>) => Promise<void>;
+  updateQuote: (id: string, q: Partial<Quote>) => Promise<void>;
   deleteQuote: (id: string) => Promise<void>;
-  // Legacy Material CRUD
-  addMaterial: (material: Omit<Material, 'id' | 'createdAt'>) => Promise<void>;
-  updateMaterial: (id: string, material: Partial<Material>) => Promise<void>;
+  addMaterial: (m: Omit<Material, 'id' | 'createdAt'>) => Promise<void>;
+  updateMaterial: (id: string, m: Partial<Material>) => Promise<void>;
   deleteMaterial: (id: string) => Promise<void>;
-  // Category CRUD
   addArtworkCategory: (name: string) => Promise<void>;
   deleteArtworkCategory: (id: string) => Promise<void>;
-  // Supplier CRUD
   addSupplier: (s: Omit<Supplier, 'id' | 'createdAt'>) => Promise<void>;
   updateSupplier: (id: string, s: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
-  // Full Material CRUD
   addFullMaterial: (m: Omit<FullMaterial, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateFullMaterial: (id: string, m: Partial<FullMaterial>) => Promise<void>;
   deleteFullMaterial: (id: string) => Promise<void>;
   updateMaterialPrice: (id: string, newPrice: number, supplierId: string, supplierName: string, notes: string) => Promise<void>;
-  // Artwork Cost CRUD
-  addArtworkCost: (cost: Omit<ArtworkCostSheet, 'id' | 'createdAt'>) => Promise<void>;
-  updateArtworkCost: (id: string, cost: Partial<ArtworkCostSheet>) => Promise<void>;
+  addArtworkCost: (c: Omit<ArtworkCostSheet, 'id' | 'createdAt'>) => Promise<void>;
+  updateArtworkCost: (id: string, c: Partial<ArtworkCostSheet>) => Promise<void>;
   deleteArtworkCost: (id: string) => Promise<void>;
   getArtworkCosts: (artworkId: string) => ArtworkCostSheet[];
   getLatestCost: (artworkId: string) => ArtworkCostSheet | undefined;
-  // Worker CRUD
   addWorker: (w: Omit<Worker, 'id' | 'createdAt'>) => Promise<void>;
   updateWorker: (id: string, w: Partial<Worker>) => Promise<void>;
   deleteWorker: (id: string) => Promise<void>;
-  // Production Order CRUD
   addProductionOrder: (o: Omit<ProductionOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateProductionOrder: (id: string, o: Partial<ProductionOrder>) => Promise<void>;
   deleteProductionOrder: (id: string) => Promise<void>;
   getOrdersByArtwork: (artworkId: string) => ProductionOrder[];
-  // Internal Manufacturing CRUD
   addInternalManufacturing: (m: Omit<InternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
   updateInternalManufacturing: (id: string, m: Partial<InternalManufacturing>) => Promise<void>;
   deleteInternalManufacturing: (id: string) => Promise<void>;
-  // External Manufacturing CRUD
   addExternalManufacturing: (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
   updateExternalManufacturing: (id: string, m: Partial<ExternalManufacturing>) => Promise<void>;
   deleteExternalManufacturing: (id: string) => Promise<void>;
-  // Backup
   restoreBackup: (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => Promise<void>;
+  migrateLocalToFirestore: () => Promise<{ migrated: number; skipped: number }>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -515,6 +487,15 @@ const DEFAULT_STAGES: ManufacturingStage[] = [
 
 export const DEFAULT_MANUFACTURING_STAGES = DEFAULT_STAGES;
 
+const DEFAULT_CATEGORIES: ArtworkCategory[] = [
+  { id: '1', name: 'نحت جداريات', createdAt: new Date().toISOString() },
+  { id: '2', name: 'نحت حر', createdAt: new Date().toISOString() },
+  { id: '3', name: 'وحدات إضاءة', createdAt: new Date().toISOString() },
+  { id: '4', name: 'منزلي', createdAt: new Date().toISOString() },
+  { id: '5', name: 'أخرى', createdAt: new Date().toISOString() },
+];
+
+// ─── Provider ──────────────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: ReactNode }) {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -529,114 +510,172 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [internalManufacturing, setInternalManufacturing] = useState<InternalManufacturing[]>([]);
   const [externalManufacturing, setExternalManufacturing] = useState<ExternalManufacturing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+
+  // Track Firestore unsubscribers
+  const unsubsRef = useRef<(() => void)[]>([]);
 
   useEffect(() => {
-    async function init() {
-      try {
-        const cleared = await AsyncStorage.getItem('data_cleared_v1');
-        if (!cleared) {
-          await AsyncStorage.multiRemove(['artworks_v2', 'customers_v1', 'quotes_v1', 'materials_v1']);
-          await AsyncStorage.setItem('data_cleared_v1', '1');
-        }
-        const [
-          storedArtworks, storedCustomers, storedQuotes, storedMaterials,
-          storedCategories, storedSuppliers, storedFullMaterials, storedCosts,
-          storedWorkers, storedOrders, storedInternal, storedExternal,
-        ] = await Promise.all([
-          loadArtworks(), loadCustomers(), loadQuotes(), loadMaterials(),
-          loadCategories(), loadSuppliers(), loadFullMaterials(), loadArtworkCosts(),
-          loadWorkers(), loadProductionOrders(), loadInternalManufacturing(), loadExternalManufacturing(),
-        ]);
-        setArtworks(storedArtworks);
-        setCustomers(storedCustomers);
-        setQuotes(storedQuotes);
-        setMaterials(storedMaterials);
-        setSuppliers(storedSuppliers);
-        setFullMaterials(storedFullMaterials);
-        setArtworkCosts(storedCosts);
-        setWorkers(storedWorkers);
-        setProductionOrders(storedOrders);
-        setInternalManufacturing(storedInternal);
-        setExternalManufacturing(storedExternal);
+    let mounted = true;
+    setSyncStatus('syncing');
 
-        const defaultCategories: ArtworkCategory[] = [
-          { id: '1', name: 'نحت جداريات', createdAt: new Date().toISOString() },
-          { id: '2', name: 'نحت حر', createdAt: new Date().toISOString() },
-          { id: '3', name: 'وحدات إضاءة', createdAt: new Date().toISOString() },
-          { id: '4', name: 'منزلي', createdAt: new Date().toISOString() },
-          { id: '5', name: 'أخرى', createdAt: new Date().toISOString() },
-        ];
-        if (storedCategories.length > 0) {
-          setArtworkCategories(storedCategories);
-        } else {
-          setArtworkCategories(defaultCategories);
-          await saveCategories(defaultCategories);
-        }
-      } finally {
-        setLoading(false);
+    // Subscribe to all Firestore collections in parallel
+    const subs: (() => void)[] = [];
+
+    subs.push(listenCollection(COLLECTIONS.artworks, d => { if (mounted) setArtworks(d as Artwork[]); }));
+    subs.push(listenCollection(COLLECTIONS.customers, d => { if (mounted) setCustomers(d as Customer[]); }));
+    subs.push(listenCollection(COLLECTIONS.quotes, d => { if (mounted) setQuotes(d as Quote[]); }));
+    subs.push(listenCollection(COLLECTIONS.fullMaterials, d => { if (mounted) setFullMaterials(d as FullMaterial[]); }));
+    subs.push(listenCollection(COLLECTIONS.suppliers, d => { if (mounted) setSuppliers(d as Supplier[]); }));
+    subs.push(listenCollection(COLLECTIONS.artworkCosts, d => { if (mounted) setArtworkCosts(d as ArtworkCostSheet[]); }));
+    subs.push(listenCollection(COLLECTIONS.workers, d => { if (mounted) setWorkers(d as Worker[]); }));
+    subs.push(listenCollection(COLLECTIONS.productionOrders, d => { if (mounted) setProductionOrders(d as ProductionOrder[]); }));
+    subs.push(listenCollection(COLLECTIONS.internalManufacturing, d => { if (mounted) setInternalManufacturing(d as InternalManufacturing[]); }));
+    subs.push(listenCollection(COLLECTIONS.externalManufacturing, d => { if (mounted) setExternalManufacturing(d as ExternalManufacturing[]); }));
+
+    subs.push(listenCollection(COLLECTIONS.categories, d => {
+      if (!mounted) return;
+      if (d.length > 0) {
+        setArtworkCategories(d as ArtworkCategory[]);
+      } else {
+        // Initialize default categories in Firestore
+        setArtworkCategories(DEFAULT_CATEGORIES);
+        DEFAULT_CATEGORIES.forEach(c => upsertDoc(COLLECTIONS.categories, c.id, c).catch(() => {}));
       }
-    }
-    init();
+    }, () => {
+      if (mounted) {
+        setSyncStatus('error');
+        // Fallback: load from AsyncStorage
+        loadFromLocal();
+      }
+    }));
+
+    unsubsRef.current = subs;
+
+    // After brief delay, mark as ready
+    const timer = setTimeout(() => {
+      if (mounted) { setLoading(false); setSyncStatus('synced'); }
+    }, 1500);
+
+    return () => {
+      mounted = false;
+      subs.forEach(u => u());
+      clearTimeout(timer);
+    };
   }, []);
 
-  // ── Artwork ──
+  // ─── Local fallback loader ────────────────────────────────────────────────
+  async function loadFromLocal() {
+    try {
+      const [a, c, q, m, cats, sup, fm, costs, w, orders, intm, extm] = await Promise.all([
+        loadArtworks(), loadCustomers(), loadQuotes(), loadMaterials(),
+        loadCategories(), loadSuppliers(), loadFullMaterials(), loadArtworkCosts(),
+        loadWorkers(), loadProductionOrders(), loadInternalManufacturing(), loadExternalManufacturing(),
+      ]);
+      setArtworks(a); setCustomers(c); setQuotes(q); setMaterials(m);
+      setSuppliers(sup); setFullMaterials(fm); setArtworkCosts(costs);
+      setWorkers(w); setProductionOrders(orders);
+      setInternalManufacturing(intm); setExternalManufacturing(extm);
+      setArtworkCategories(cats.length > 0 ? cats : DEFAULT_CATEGORIES);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ─── Migration: local AsyncStorage → Firestore ────────────────────────────
+  const migrateLocalToFirestore = useCallback(async (): Promise<{ migrated: number; skipped: number }> => {
+    let migrated = 0;
+    let skipped = 0;
+
+    const migrate = async (col: string, loader: () => Promise<any[]>) => {
+      try {
+        const local = await loader();
+        if (!local.length) return;
+        const existing = await fetchOnce(col);
+        const existingIds = new Set(existing.map((x: any) => x.id));
+        const toMigrate = local.filter((x: any) => !existingIds.has(x.id));
+        const alreadyThere = local.length - toMigrate.length;
+        if (toMigrate.length > 0) {
+          await batchUpsert(col, toMigrate);
+          migrated += toMigrate.length;
+        }
+        skipped += alreadyThere;
+      } catch {}
+    };
+
+    await Promise.all([
+      migrate(COLLECTIONS.artworks, loadArtworks),
+      migrate(COLLECTIONS.customers, loadCustomers),
+      migrate(COLLECTIONS.quotes, loadQuotes),
+      migrate(COLLECTIONS.fullMaterials, loadFullMaterials),
+      migrate(COLLECTIONS.suppliers, loadSuppliers),
+      migrate(COLLECTIONS.artworkCosts, loadArtworkCosts),
+      migrate(COLLECTIONS.workers, loadWorkers),
+      migrate(COLLECTIONS.productionOrders, loadProductionOrders),
+      migrate(COLLECTIONS.externalManufacturing, loadExternalManufacturing),
+    ]);
+
+    return { migrated, skipped };
+  }, []);
+
+  // ─── Artwork CRUD ──────────────────────────────────────────────────────────
   const addArtwork = useCallback(async (artwork: Omit<Artwork, 'id' | 'createdAt'>) => {
-    const newArtwork: Artwork = { ...artwork, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newArtwork, ...artworks];
-    setArtworks(updated); await saveArtworks(updated);
-  }, [artworks]);
+    const newItem: Artwork = { ...artwork, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.artworks, newItem.id, newItem);
+  }, []);
 
   const updateArtwork = useCallback(async (id: string, artwork: Partial<Artwork>) => {
-    const updated = artworks.map(a => a.id === id ? { ...a, ...artwork } : a);
-    setArtworks(updated); await saveArtworks(updated);
+    const existing = artworks.find(a => a.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.artworks, id, { ...existing, ...artwork });
   }, [artworks]);
 
   const deleteArtwork = useCallback(async (id: string) => {
-    const updated = artworks.filter(a => a.id !== id);
-    setArtworks(updated); await saveArtworks(updated);
-  }, [artworks]);
+    await removeDoc(COLLECTIONS.artworks, id);
+  }, []);
 
-  // ── Customer ──
+  // ─── Customer CRUD ─────────────────────────────────────────────────────────
   const addCustomer = useCallback(async (customer: Omit<Customer, 'id' | 'createdAt'>) => {
-    const newCustomer: Customer = { ...customer, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newCustomer, ...customers];
-    setCustomers(updated); await saveCustomers(updated);
-  }, [customers]);
+    const newItem: Customer = { ...customer, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.customers, newItem.id, newItem);
+  }, []);
 
   const updateCustomer = useCallback(async (id: string, customer: Partial<Customer>) => {
-    const updated = customers.map(c => c.id === id ? { ...c, ...customer } : c);
-    setCustomers(updated); await saveCustomers(updated);
+    const existing = customers.find(c => c.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.customers, id, { ...existing, ...customer });
   }, [customers]);
 
   const deleteCustomer = useCallback(async (id: string) => {
-    const updated = customers.filter(c => c.id !== id);
-    setCustomers(updated); await saveCustomers(updated);
-  }, [customers]);
+    await removeDoc(COLLECTIONS.customers, id);
+  }, []);
 
-  // ── Quote ──
+  // ─── Quote CRUD ────────────────────────────────────────────────────────────
   const addQuote = useCallback(async (quote: Omit<Quote, 'id' | 'quoteNumber' | 'createdAt'>) => {
     const num = (quotes.length + 1).toString().padStart(3, '0');
     const year = new Date().getFullYear();
-    const newQuote: Quote = { ...quote, id: Date.now().toString(), quoteNumber: `QT-${year}-${num}`, createdAt: new Date().toISOString() };
-    const updated = [newQuote, ...quotes];
-    setQuotes(updated); await saveQuotes(updated);
+    const newItem: Quote = {
+      ...quote, id: uid(), quoteNumber: `QT-${year}-${num}`,
+      createdAt: new Date().toISOString(),
+    };
+    await upsertDoc(COLLECTIONS.quotes, newItem.id, newItem);
   }, [quotes]);
 
   const updateQuote = useCallback(async (id: string, quote: Partial<Quote>) => {
-    const updated = quotes.map(q => q.id === id ? { ...q, ...quote } : q);
-    setQuotes(updated); await saveQuotes(updated);
+    const existing = quotes.find(q => q.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.quotes, id, { ...existing, ...quote });
   }, [quotes]);
 
   const deleteQuote = useCallback(async (id: string) => {
-    const updated = quotes.filter(q => q.id !== id);
-    setQuotes(updated); await saveQuotes(updated);
-  }, [quotes]);
+    await removeDoc(COLLECTIONS.quotes, id);
+  }, []);
 
-  // ── Legacy Material ──
+  // ─── Legacy Material CRUD ──────────────────────────────────────────────────
   const addMaterial = useCallback(async (material: Omit<Material, 'id' | 'createdAt'>) => {
-    const newMaterial: Material = { ...material, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newMaterial, ...materials];
-    setMaterials(updated); await saveMaterials(updated);
+    const newItem: Material = { ...material, id: uid(), createdAt: new Date().toISOString() };
+    setMaterials(prev => [newItem, ...prev]);
+    await saveMaterials([newItem, ...materials]);
   }, [materials]);
 
   const updateMaterial = useCallback(async (id: string, material: Partial<Material>) => {
@@ -649,93 +688,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMaterials(updated); await saveMaterials(updated);
   }, [materials]);
 
-  // ── Category ──
+  // ─── Category CRUD ─────────────────────────────────────────────────────────
   const addArtworkCategory = useCallback(async (name: string) => {
-    const newCat: ArtworkCategory = { id: Date.now().toString(), name: name.trim(), createdAt: new Date().toISOString() };
-    const updated = [...artworkCategories, newCat];
-    setArtworkCategories(updated); await saveCategories(updated);
-  }, [artworkCategories]);
+    const newCat: ArtworkCategory = { id: uid(), name: name.trim(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.categories, newCat.id, newCat);
+  }, []);
 
   const deleteArtworkCategory = useCallback(async (id: string) => {
-    const updated = artworkCategories.filter(c => c.id !== id);
-    setArtworkCategories(updated); await saveCategories(updated);
-  }, [artworkCategories]);
+    await removeDoc(COLLECTIONS.categories, id);
+  }, []);
 
-  // ── Supplier ──
+  // ─── Supplier CRUD ─────────────────────────────────────────────────────────
   const addSupplier = useCallback(async (s: Omit<Supplier, 'id' | 'createdAt'>) => {
-    const newS: Supplier = { ...s, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newS, ...suppliers];
-    setSuppliers(updated); await saveSuppliers(updated);
-  }, [suppliers]);
+    const newItem: Supplier = { ...s, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.suppliers, newItem.id, newItem);
+  }, []);
 
   const updateSupplier = useCallback(async (id: string, s: Partial<Supplier>) => {
-    const updated = suppliers.map(x => x.id === id ? { ...x, ...s } : x);
-    setSuppliers(updated); await saveSuppliers(updated);
+    const existing = suppliers.find(x => x.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.suppliers, id, { ...existing, ...s });
   }, [suppliers]);
 
   const deleteSupplier = useCallback(async (id: string) => {
-    const updated = suppliers.filter(x => x.id !== id);
-    setSuppliers(updated); await saveSuppliers(updated);
-  }, [suppliers]);
+    await removeDoc(COLLECTIONS.suppliers, id);
+  }, []);
 
-  // ── Full Material ──
+  // ─── Full Material CRUD ────────────────────────────────────────────────────
   const addFullMaterial = useCallback(async (m: Omit<FullMaterial, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
-    const newM: FullMaterial = { ...m, id: Date.now().toString(), createdAt: now, updatedAt: now };
-    const updated = [newM, ...fullMaterials];
-    setFullMaterials(updated); await saveFullMaterials(updated);
-  }, [fullMaterials]);
+    const newItem: FullMaterial = { ...m, id: uid(), createdAt: now, updatedAt: now };
+    await upsertDoc(COLLECTIONS.fullMaterials, newItem.id, newItem);
+  }, []);
 
   const updateFullMaterial = useCallback(async (id: string, m: Partial<FullMaterial>) => {
-    const updated = fullMaterials.map(x => x.id === id ? { ...x, ...m, updatedAt: new Date().toISOString() } : x);
-    setFullMaterials(updated); await saveFullMaterials(updated);
+    const existing = fullMaterials.find(x => x.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.fullMaterials, id, { ...existing, ...m, updatedAt: new Date().toISOString() });
   }, [fullMaterials]);
 
   const deleteFullMaterial = useCallback(async (id: string) => {
-    const updated = fullMaterials.filter(x => x.id !== id);
-    setFullMaterials(updated); await saveFullMaterials(updated);
-  }, [fullMaterials]);
+    await removeDoc(COLLECTIONS.fullMaterials, id);
+  }, []);
 
   const updateMaterialPrice = useCallback(async (id: string, newPrice: number, supplierId: string, supplierName: string, notes: string) => {
-    const updated = fullMaterials.map(x => {
-      if (x.id !== id) return x;
-      const historyEntry: PriceHistoryEntry = {
-        id: Date.now().toString(),
-        oldPrice: x.unitPrice,
-        newPrice,
-        supplierId,
-        supplierName,
-        date: new Date().toISOString(),
-        notes,
-      };
-      return {
-        ...x,
-        unitPrice: newPrice,
-        lastPurchasePrice: newPrice,
-        averagePrice: x.averagePrice ? (x.averagePrice + newPrice) / 2 : newPrice,
-        priceHistory: [historyEntry, ...(x.priceHistory || [])],
-        updatedAt: new Date().toISOString(),
-      };
-    });
-    setFullMaterials(updated); await saveFullMaterials(updated);
+    const x = fullMaterials.find(m => m.id === id);
+    if (!x) return;
+    const historyEntry: PriceHistoryEntry = {
+      id: uid(), oldPrice: x.unitPrice, newPrice, supplierId, supplierName,
+      date: new Date().toISOString(), notes,
+    };
+    const updated = {
+      ...x,
+      unitPrice: newPrice,
+      lastPurchasePrice: newPrice,
+      averagePrice: x.averagePrice ? (x.averagePrice + newPrice) / 2 : newPrice,
+      priceHistory: [historyEntry, ...(x.priceHistory || [])],
+      updatedAt: new Date().toISOString(),
+    };
+    await upsertDoc(COLLECTIONS.fullMaterials, id, updated);
   }, [fullMaterials]);
 
-  // ── Artwork Cost ──
+  // ─── Artwork Cost CRUD ─────────────────────────────────────────────────────
   const addArtworkCost = useCallback(async (cost: Omit<ArtworkCostSheet, 'id' | 'createdAt'>) => {
-    const newCost: ArtworkCostSheet = { ...cost, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newCost, ...artworkCosts];
-    setArtworkCosts(updated); await saveArtworkCosts(updated);
-  }, [artworkCosts]);
+    const newItem: ArtworkCostSheet = { ...cost, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.artworkCosts, newItem.id, newItem);
+  }, []);
 
   const updateArtworkCost = useCallback(async (id: string, cost: Partial<ArtworkCostSheet>) => {
-    const updated = artworkCosts.map(c => c.id === id ? { ...c, ...cost } : c);
-    setArtworkCosts(updated); await saveArtworkCosts(updated);
+    const existing = artworkCosts.find(c => c.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.artworkCosts, id, { ...existing, ...cost });
   }, [artworkCosts]);
 
   const deleteArtworkCost = useCallback(async (id: string) => {
-    const updated = artworkCosts.filter(c => c.id !== id);
-    setArtworkCosts(updated); await saveArtworkCosts(updated);
-  }, [artworkCosts]);
+    await removeDoc(COLLECTIONS.artworkCosts, id);
+  }, []);
 
   const getArtworkCosts = useCallback((artworkId: string) => {
     return artworkCosts.filter(c => c.artworkId === artworkId).sort((a, b) => b.version - a.version);
@@ -747,99 +775,96 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return costs.reduce((latest, c) => c.version > latest.version ? c : latest);
   }, [artworkCosts]);
 
-  // ── Worker ──
+  // ─── Worker CRUD ───────────────────────────────────────────────────────────
   const addWorker = useCallback(async (w: Omit<Worker, 'id' | 'createdAt'>) => {
-    const newW: Worker = { ...w, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newW, ...workers];
-    setWorkers(updated); await saveWorkers(updated);
-  }, [workers]);
+    const newItem: Worker = { ...w, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.workers, newItem.id, newItem);
+  }, []);
 
   const updateWorker = useCallback(async (id: string, w: Partial<Worker>) => {
-    const updated = workers.map(x => x.id === id ? { ...x, ...w } : x);
-    setWorkers(updated); await saveWorkers(updated);
+    const existing = workers.find(x => x.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.workers, id, { ...existing, ...w });
   }, [workers]);
 
   const deleteWorker = useCallback(async (id: string) => {
-    const updated = workers.filter(x => x.id !== id);
-    setWorkers(updated); await saveWorkers(updated);
-  }, [workers]);
+    await removeDoc(COLLECTIONS.workers, id);
+  }, []);
 
-  // ── Production Order ──
+  // ─── Production Order CRUD ─────────────────────────────────────────────────
   const addProductionOrder = useCallback(async (o: Omit<ProductionOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
     const num = (productionOrders.length + 1).toString().padStart(4, '0');
     const year = new Date().getFullYear();
-    const newO: ProductionOrder = {
-      ...o, id: Date.now().toString(),
-      orderNumber: `PO-${year}-${num}`,
-      createdAt: now, updatedAt: now,
+    const newItem: ProductionOrder = {
+      ...o, id: uid(), orderNumber: `PO-${year}-${num}`, createdAt: now, updatedAt: now,
     };
-    const updated = [newO, ...productionOrders];
-    setProductionOrders(updated); await saveProductionOrders(updated);
+    await upsertDoc(COLLECTIONS.productionOrders, newItem.id, newItem);
   }, [productionOrders]);
 
   const updateProductionOrder = useCallback(async (id: string, o: Partial<ProductionOrder>) => {
-    const updated = productionOrders.map(x => x.id === id ? { ...x, ...o, updatedAt: new Date().toISOString() } : x);
-    setProductionOrders(updated); await saveProductionOrders(updated);
+    const existing = productionOrders.find(x => x.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.productionOrders, id, { ...existing, ...o, updatedAt: new Date().toISOString() });
   }, [productionOrders]);
 
   const deleteProductionOrder = useCallback(async (id: string) => {
-    const updated = productionOrders.filter(x => x.id !== id);
-    setProductionOrders(updated); await saveProductionOrders(updated);
-  }, [productionOrders]);
+    await removeDoc(COLLECTIONS.productionOrders, id);
+  }, []);
 
   const getOrdersByArtwork = useCallback((artworkId: string) => {
     return productionOrders.filter(o => o.artworkId === artworkId);
   }, [productionOrders]);
 
-  // ── Internal Manufacturing ──
+  // ─── Internal Manufacturing CRUD ───────────────────────────────────────────
   const addInternalManufacturing = useCallback(async (m: Omit<InternalManufacturing, 'id' | 'createdAt'>) => {
-    const newM: InternalManufacturing = { ...m, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newM, ...internalManufacturing];
-    setInternalManufacturing(updated); await saveInternalManufacturing(updated);
-  }, [internalManufacturing]);
+    const newItem: InternalManufacturing = { ...m, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.internalManufacturing, newItem.id, newItem);
+  }, []);
 
   const updateInternalManufacturing = useCallback(async (id: string, m: Partial<InternalManufacturing>) => {
-    const updated = internalManufacturing.map(x => x.id === id ? { ...x, ...m } : x);
-    setInternalManufacturing(updated); await saveInternalManufacturing(updated);
+    const existing = internalManufacturing.find(x => x.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.internalManufacturing, id, { ...existing, ...m });
   }, [internalManufacturing]);
 
   const deleteInternalManufacturing = useCallback(async (id: string) => {
-    const updated = internalManufacturing.filter(x => x.id !== id);
-    setInternalManufacturing(updated); await saveInternalManufacturing(updated);
-  }, [internalManufacturing]);
+    await removeDoc(COLLECTIONS.internalManufacturing, id);
+  }, []);
 
-  // ── External Manufacturing ──
+  // ─── External Manufacturing CRUD ───────────────────────────────────────────
   const addExternalManufacturing = useCallback(async (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => {
-    const newM: ExternalManufacturing = { ...m, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    const updated = [newM, ...externalManufacturing];
-    setExternalManufacturing(updated); await saveExternalManufacturing(updated);
-  }, [externalManufacturing]);
+    const newItem: ExternalManufacturing = { ...m, id: uid(), createdAt: new Date().toISOString() };
+    await upsertDoc(COLLECTIONS.externalManufacturing, newItem.id, newItem);
+  }, []);
 
   const updateExternalManufacturing = useCallback(async (id: string, m: Partial<ExternalManufacturing>) => {
-    const updated = externalManufacturing.map(x => x.id === id ? { ...x, ...m } : x);
-    setExternalManufacturing(updated); await saveExternalManufacturing(updated);
+    const existing = externalManufacturing.find(x => x.id === id);
+    if (!existing) return;
+    await upsertDoc(COLLECTIONS.externalManufacturing, id, { ...existing, ...m });
   }, [externalManufacturing]);
 
   const deleteExternalManufacturing = useCallback(async (id: string) => {
-    const updated = externalManufacturing.filter(x => x.id !== id);
-    setExternalManufacturing(updated); await saveExternalManufacturing(updated);
-  }, [externalManufacturing]);
+    await removeDoc(COLLECTIONS.externalManufacturing, id);
+  }, []);
 
-  // ── Backup ──
+  // ─── Backup restore ────────────────────────────────────────────────────────
   const restoreBackup = useCallback(async (data: { artworks: Artwork[]; customers: Customer[]; quotes: Quote[]; materials?: Material[] }) => {
-    setArtworks(data.artworks); setCustomers(data.customers); setQuotes(data.quotes);
-    if (data.materials) setMaterials(data.materials);
     await Promise.all([
-      saveArtworks(data.artworks), saveCustomers(data.customers),
-      saveQuotes(data.quotes), saveMaterials(data.materials || []),
+      batchUpsert(COLLECTIONS.artworks, data.artworks),
+      batchUpsert(COLLECTIONS.customers, data.customers),
+      batchUpsert(COLLECTIONS.quotes, data.quotes),
     ]);
+    if (data.materials) {
+      setMaterials(data.materials);
+      await saveMaterials(data.materials);
+    }
   }, []);
 
   return (
     <AppContext.Provider value={{
-      artworks, customers, quotes, materials, loading, artworkCategories,
-      suppliers, fullMaterials, artworkCosts,
+      artworks, customers, quotes, materials, loading, syncStatus,
+      artworkCategories, suppliers, fullMaterials, artworkCosts,
       workers, productionOrders, internalManufacturing, externalManufacturing,
       addArtwork, updateArtwork, deleteArtwork,
       addCustomer, updateCustomer, deleteCustomer,
@@ -853,7 +878,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
       addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
       addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
-      restoreBackup,
+      restoreBackup, migrateLocalToFirestore,
     }}>
       {children}
     </AppContext.Provider>

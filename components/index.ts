@@ -17,3 +17,5 @@ export { PinScreen } from './feature/PinScreen';
 export { ExportModal } from './feature/ExportModal';
 export { BackupModal } from './feature/BackupModal';
 export { ArtworkCostModal } from './feature/ArtworkCostModal';
+export { AdminLoginScreen } from './feature/AdminLoginScreen';
+export { MigrationModal } from './feature/MigrationModal';
