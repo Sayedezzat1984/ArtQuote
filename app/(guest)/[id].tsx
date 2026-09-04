@@ -1,4 +1,4 @@
-// Powered by OnSpace.AI — Guest Artwork Detail
+// Powered by OnSpace.AI — Public Artwork Detail (reads from published_artworks)
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
@@ -9,21 +9,24 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
-import { useApp } from '@/hooks/useApp';
+import { usePublicGallery } from '@/contexts/PublicGalleryContext';
 import { isTablet } from '@/constants/responsive';
 import { useVisitor } from '@/contexts/VisitorContext';
+import { useApp } from '@/hooks/useApp';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
-export default function GuestArtworkDetailScreen() {
+export default function PublicArtworkDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { artworks, materials, appSettings } = useApp() as any;
 
-  const artwork = artworks.find((a: any) => a.id === id);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const { getPublicArtwork } = usePublicGallery();
+  const { appSettings } = useApp() as any;
   const { trackArtworkView } = useVisitor();
+
+  const artwork = getPublicArtwork(id);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   // Track view when screen mounts
   useEffect(() => {
@@ -58,22 +61,21 @@ export default function GuestArtworkDetailScreen() {
     );
   }
 
+  // Build full image list (mainImage + additional images deduplicated)
   const allImages: string[] = [
-    ...(artwork.image ? [artwork.image] : []),
-    ...(artwork.images || []).filter((img: string) => img !== artwork.image),
+    ...(artwork.mainImage ? [artwork.mainImage] : []),
+    ...(artwork.images || []).filter(img => img !== artwork.mainImage),
   ].filter(Boolean);
 
-  const artworkMaterials = (artwork.materialIds || [])
-    .map((mid: string) => materials.find((m: any) => m.id === mid))
-    .filter(Boolean);
-
+  // Dimension display
   const dimensionParts: string[] = [];
-  if (artwork.height) dimensionParts.push(`الارتفاع: ${artwork.height} ${artwork.dimensionUnit || 'cm'}`);
-  if (artwork.width) dimensionParts.push(`العرض: ${artwork.width} ${artwork.dimensionUnit || 'cm'}`);
-  if (artwork.depth) dimensionParts.push(`العمق: ${artwork.depth} ${artwork.dimensionUnit || 'cm'}`);
-  if (artwork.length) dimensionParts.push(`الطول: ${artwork.length} ${artwork.dimensionUnit || 'cm'}`);
-  if (artwork.diameter) dimensionParts.push(`القطر: ${artwork.diameter} ${artwork.dimensionUnit || 'cm'}`);
-  if (artwork.thickness) dimensionParts.push(`السماكة: ${artwork.thickness} ${artwork.dimensionUnit || 'cm'}`);
+  const unit = artwork.dimensionUnit || 'cm';
+  if (artwork.height) dimensionParts.push(`الارتفاع: ${artwork.height} ${unit}`);
+  if (artwork.width) dimensionParts.push(`العرض: ${artwork.width} ${unit}`);
+  if (artwork.depth) dimensionParts.push(`العمق: ${artwork.depth} ${unit}`);
+  if (artwork.length) dimensionParts.push(`الطول: ${artwork.length} ${unit}`);
+  if (artwork.diameter) dimensionParts.push(`القطر: ${artwork.diameter} ${unit}`);
+  if (artwork.thickness) dimensionParts.push(`السماكة: ${artwork.thickness} ${unit}`);
   if (artwork.weight) dimensionParts.push(`الوزن: ${artwork.weight} ${artwork.weightUnit || 'kg'}`);
 
   return (
@@ -91,14 +93,15 @@ export default function GuestArtworkDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* Main Hero Image */}
-        {artwork.image ? (
+        {/* Hero Image */}
+        {artwork.mainImage ? (
           <Pressable onPress={() => setLightboxIndex(0)} style={styles.heroContainer}>
             <Image
-              source={{ uri: artwork.image }}
+              source={{ uri: artwork.mainImage }}
               style={styles.heroImage}
               contentFit="contain"
               transition={200}
+              cachePolicy="memory-disk"
             />
             <View style={styles.heroOverlay}>
               <MaterialIcons name="zoom-in" size={22} color="#fff" />
@@ -110,7 +113,7 @@ export default function GuestArtworkDetailScreen() {
           </View>
         )}
 
-        {/* Gallery thumbnails */}
+        {/* Thumbnails */}
         {allImages.length > 1 ? (
           <View style={styles.thumbsOuter}>
             <FlatList
@@ -131,7 +134,7 @@ export default function GuestArtworkDetailScreen() {
           </View>
         ) : null}
 
-        {/* Content block */}
+        {/* Content */}
         <View style={styles.contentBlock}>
 
           {/* Title & Category */}
@@ -171,15 +174,14 @@ export default function GuestArtworkDetailScreen() {
             </View>
           ) : null}
 
-          {/* Materials */}
-          {artworkMaterials.length > 0 ? (
+          {/* Material names from public mirror */}
+          {artwork.materialNames && artwork.materialNames.length > 0 ? (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>الخامات</Text>
               <View style={styles.tagsRow}>
-                {artworkMaterials.map((m: any) => (
-                  <View key={m.id} style={styles.tag}>
-                    {m.color ? <View style={[styles.tagDot, { backgroundColor: m.color }]} /> : null}
-                    <Text style={styles.tagText}>{m.name}</Text>
+                {artwork.materialNames.map((name, i) => (
+                  <View key={i} style={styles.tag}>
+                    <Text style={styles.tagText}>{name}</Text>
                   </View>
                 ))}
               </View>
@@ -188,15 +190,25 @@ export default function GuestArtworkDetailScreen() {
 
           {/* Availability */}
           <View style={styles.availRow}>
-            <View style={[styles.availBadge, { backgroundColor: artwork.available ? Colors.successSurface : Colors.errorSurface, borderColor: artwork.available ? Colors.success + '60' : Colors.error + '60' }]}>
-              <MaterialIcons name={artwork.available ? 'check-circle' : 'cancel'} size={14} color={artwork.available ? Colors.success : Colors.error} />
+            <View style={[
+              styles.availBadge,
+              {
+                backgroundColor: artwork.available ? Colors.successSurface : Colors.errorSurface,
+                borderColor: artwork.available ? Colors.success + '60' : Colors.error + '60',
+              },
+            ]}>
+              <MaterialIcons
+                name={artwork.available ? 'check-circle' : 'cancel'}
+                size={14}
+                color={artwork.available ? Colors.success : Colors.error}
+              />
               <Text style={[styles.availText, { color: artwork.available ? Colors.success : Colors.error }]}>
                 {artwork.available ? 'متاح' : 'غير متاح حالياً'}
               </Text>
             </View>
           </View>
 
-          {/* Quantity if set */}
+          {/* Quantity */}
           {artwork.quantity ? (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>الكمية المتاحة</Text>
@@ -207,9 +219,12 @@ export default function GuestArtworkDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* WhatsApp CTA — floating bottom bar */}
+      {/* WhatsApp CTA */}
       <View style={[styles.waBar, { paddingBottom: insets.bottom + 8 }]}>
-        <Pressable onPress={openWhatsApp} style={({ pressed }) => [styles.waBtn, pressed && { opacity: 0.85 }]}>
+        <Pressable
+          onPress={openWhatsApp}
+          style={({ pressed }) => [styles.waBtn, pressed && { opacity: 0.85 }]}
+        >
           <MaterialIcons name="chat" size={22} color="#fff" />
           <Text style={styles.waBtnText}>تواصل عبر واتساب</Text>
         </Pressable>
@@ -253,57 +268,34 @@ export default function GuestArtworkDetailScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-
-  // Top bar
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.surface,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: Colors.border, backgroundColor: Colors.surface,
   },
   topBackBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: Colors.border,
   },
   topBackText: { fontSize: FontSize.xs, color: Colors.textPrimary, fontWeight: FontWeight.medium },
   topBarRight: { flex: 1, paddingRight: 12, alignItems: 'flex-end' },
   topBarTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
 
   scrollContent: { paddingBottom: 120 },
-
-  // Hero
   heroContainer: {
-    width: SW,
-    height: isTablet ? SW * 0.55 : SW * 0.75,
-    backgroundColor: Colors.surfaceElevated,
-    position: 'relative',
+    width: SW, height: isTablet ? SW * 0.55 : SW * 0.75,
+    backgroundColor: Colors.surfaceElevated, position: 'relative',
   },
   heroPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primarySurface },
   heroImage: { width: '100%', height: '100%' },
   heroOverlay: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', bottom: 12, left: 12,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center',
   },
 
-  // Thumbnails
   thumbsOuter: { height: 80, borderBottomWidth: 1, borderBottomColor: Colors.border, backgroundColor: Colors.surfaceElevated },
   thumbsContent: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
   thumb: {
@@ -316,19 +308,21 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  // Content
   contentBlock: { padding: 20 },
   titleSection: { alignItems: 'flex-end', marginBottom: 20 },
   categoryPill: {
     backgroundColor: Colors.primarySurface, borderRadius: Radius.full,
-    paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: Colors.primary + '50',
-    marginBottom: 10,
+    paddingHorizontal: 12, paddingVertical: 4,
+    borderWidth: 1, borderColor: Colors.primary + '50', marginBottom: 10,
   },
   categoryPillText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
-  artworkTitle: { fontSize: isTablet ? FontSize.xxxl : FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary, textAlign: 'right', lineHeight: 34 },
+  artworkTitle: {
+    fontSize: isTablet ? FontSize.xxxl : FontSize.xxl,
+    fontWeight: FontWeight.extrabold, color: Colors.textPrimary,
+    textAlign: 'right', lineHeight: 34,
+  },
   artworkYear: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 4, textAlign: 'right' },
 
-  // Section
   section: { marginBottom: 20 },
   sectionLabel: {
     fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary,
@@ -337,60 +331,42 @@ const styles = StyleSheet.create({
   },
   descriptionText: { fontSize: FontSize.base, color: Colors.textSecondary, textAlign: 'right', lineHeight: 26 },
 
-  // Dimensions
   dimGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' },
   dimCard: {
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
-    paddingVertical: 10, paddingHorizontal: 14,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
-    minWidth: 90,
+    paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border, minWidth: 90,
   },
   dimValue: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   dimLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
 
-  // Tags
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
   tag: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
     paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: Colors.border,
   },
-  tagDot: { width: 10, height: 10, borderRadius: 5 },
   tagText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
 
-  // Availability
   availRow: { alignItems: 'flex-end', marginBottom: 12 },
   availBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1,
   },
   availText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
-
   simpleValue: { fontSize: FontSize.base, color: Colors.textPrimary, textAlign: 'right', fontWeight: FontWeight.semibold },
 
-  // WhatsApp bar
   waBar: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadow.md,
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: Colors.surface, paddingHorizontal: 20, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md,
   },
   waBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#25D366',
-    borderRadius: Radius.lg,
-    paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: '#25D366', borderRadius: Radius.lg, paddingVertical: 14,
   },
   waBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#fff' },
 
-  // Lightbox
   lightboxOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   lightboxClose: {
     position: 'absolute', top: 48, right: 20, zIndex: 10,
@@ -402,7 +378,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)', fontSize: FontSize.sm,
   },
 
-  // Not found
   notFound: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   notFoundText: { fontSize: FontSize.xl, color: Colors.textMuted, marginTop: 16, textAlign: 'center' },
   backButton: {

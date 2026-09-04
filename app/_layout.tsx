@@ -5,10 +5,10 @@ import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlertProvider } from '@/template';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AppProvider } from '@/contexts/AppContext';
 import { VisitorProvider } from '@/contexts/VisitorContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/theme';
 
 // ─── Root notification listener setup ───────────────────────────────────
@@ -61,11 +61,13 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <LanguageProvider>
-            <AppProvider>
-              <VisitorProvider>
-                <AppNavigator />
-              </VisitorProvider>
-            </AppProvider>
+            <PublicGalleryProvider>
+              <AppProvider>
+                <VisitorProvider>
+                  <AppNavigator />
+                </VisitorProvider>
+              </AppProvider>
+            </PublicGalleryProvider>
           </LanguageProvider>
         </AuthProvider>
       </SafeAreaProvider>

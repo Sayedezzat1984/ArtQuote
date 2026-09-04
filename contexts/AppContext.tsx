@@ -446,6 +446,8 @@ interface AppContextType {
   addArtwork: (a: Omit<Artwork, 'id' | 'createdAt'>) => Promise<void>;
   updateArtwork: (id: string, a: Partial<Artwork>) => Promise<void>;
   deleteArtwork: (id: string) => Promise<void>;
+  /** Force-sync a single artwork to the published_artworks mirror */
+  syncArtworkToPublic: (artwork: Artwork) => Promise<void>;
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => Promise<void>;
   updateCustomer: (id: string, c: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -794,15 +796,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [appSettings]);
 
+  // ─── Build public mirror record (public-safe fields only) ────────────────
+  function buildPublicRecord(artwork: Artwork): Record<string, any> {
+    return {
+      id: artwork.id,
+      artworkId: artwork.id,
+      title: artwork.title,
+      description: artwork.description,
+      category: artwork.category,
+      mainImage: artwork.image ?? null,
+      images: artwork.images ?? [],
+      height: artwork.height ?? '',
+      width: artwork.width ?? '',
+      depth: artwork.depth ?? '',
+      length: artwork.length ?? '',
+      diameter: artwork.diameter ?? '',
+      thickness: artwork.thickness ?? '',
+      weight: artwork.weight ?? '',
+      weightUnit: artwork.weightUnit ?? 'kg',
+      dimensionUnit: artwork.dimensionUnit ?? 'cm',
+      dimensions: artwork.dimensions ?? '',
+      quantity: artwork.quantity ?? '',
+      year: artwork.year ?? '',
+      available: artwork.available ?? true,
+      isPublished: artwork.visibleToVisitors === true,
+      materialNames: [], // names resolved separately if needed
+      createdAt: artwork.createdAt,
+      updatedAt: artwork.updatedAt ?? artwork.createdAt,
+    };
+  }
+
+  // ─── Sync single artwork to published_artworks mirror ─────────────────────
+  const syncArtworkToPublic = useCallback(async (artwork: Artwork) => {
+    try {
+      if (artwork.visibleToVisitors === true) {
+        await upsertDocSilent(COLLECTIONS.publishedArtworks, artwork.id, buildPublicRecord(artwork));
+      } else {
+        await removeDoc(COLLECTIONS.publishedArtworks, artwork.id);
+      }
+    } catch {}
+  }, []);
+
   // ─── Artwork CRUD ──────────────────────────────────────────────────────────
   const addArtwork = useCallback(async (artwork: Omit<Artwork, 'id' | 'createdAt'>) => {
     const now = new Date().toISOString();
     const newItem: Artwork = { ...artwork, id: uid(), createdAt: now, updatedAt: now };
     markSyncing();
     await upsertDocSilent(COLLECTIONS.artworks, newItem.id, newItem);
+    // Mirror to published_artworks
+    syncArtworkToPublic(newItem).catch(() => {});
     setSyncStatus(getIsOnline() ? 'synced' : 'offline');
     await refreshPendingCount();
-  }, [refreshPendingCount]);
+  }, [refreshPendingCount, syncArtworkToPublic]);
 
   const updateArtwork = useCallback(async (id: string, artwork: Partial<Artwork>) => {
     const existing = artworks.find(a => a.id === id);
@@ -810,13 +855,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updated = { ...existing, ...artwork, updatedAt: new Date().toISOString() };
     markSyncing();
     await upsertDocSilent(COLLECTIONS.artworks, id, updated);
+    // Mirror to published_artworks
+    syncArtworkToPublic(updated).catch(() => {});
     setSyncStatus(getIsOnline() ? 'synced' : 'offline');
     await refreshPendingCount();
-  }, [artworks, refreshPendingCount]);
+  }, [artworks, refreshPendingCount, syncArtworkToPublic]);
 
   const deleteArtwork = useCallback(async (id: string) => {
     markSyncing();
     await removeDoc(COLLECTIONS.artworks, id);
+    // Also remove from published_artworks mirror
+    removeDoc(COLLECTIONS.publishedArtworks, id).catch(() => {});
     setSyncStatus(getIsOnline() ? 'synced' : 'offline');
     await refreshPendingCount();
   }, [refreshPendingCount]);
@@ -1136,7 +1185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingOpsCount, isOnline, appSettings,
       artworkCategories, suppliers, fullMaterials, artworkCosts,
       workers, productionOrders, internalManufacturing, externalManufacturing,
-      addArtwork, updateArtwork, deleteArtwork,
+      addArtwork, updateArtwork, deleteArtwork, syncArtworkToPublic,
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote, deleteQuote,
       addMaterial, updateMaterial, deleteMaterial,
@@ -1148,7 +1197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
       addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
       addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
-      updateAppSettings, restoreBackup, migrateLocalToFirestore, forceSyncNow, syncGuestGallery,
+      updateAppSettings, restoreBackup, migrateLocalToFirestore, forceSyncNow, syncGuestGallery, syncArtworkToPublic,
     }}>
       {children}
     </AppContext.Provider>
