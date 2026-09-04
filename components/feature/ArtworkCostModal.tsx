@@ -603,12 +603,12 @@ const oe = StyleSheet.create({
 });
 
 // ─── Main Modal ──────────────────────────────────────────────────────────────
-type Tab = 'materials' | 'labor' | 'external_labor' | 'transport' | 'packaging' | 'other' | 'pricing' | 'history';
+type Tab = 'materials' | 'labor' | 'external_labor' | 'transport' | 'packaging' | 'other' | 'orders' | 'pricing' | 'history';
 
 export function ArtworkCostModal({ visible, artworkId, artworkTitle, onClose }: {
   visible: boolean; artworkId: string; artworkTitle: string; onClose: () => void;
 }) {
-  const { fullMaterials, workers, getArtworkCosts, getLatestCost, addArtworkCost, updateArtworkCost } = useApp();
+  const { fullMaterials, workers, getArtworkCosts, getLatestCost, addArtworkCost, updateArtworkCost, getOrdersByArtwork, updateProductionOrder } = useApp();
   const existingCosts = getArtworkCosts(artworkId);
   const latestCost = getLatestCost(artworkId);
 
@@ -752,6 +752,51 @@ export function ArtworkCostModal({ visible, artworkId, artworkTitle, onClose }: 
     onClose();
   }
 
+  const artworkOrders = getOrdersByArtwork(artworkId);
+
+  function transferToOrder(orderId: string) {
+    updateProductionOrder(orderId, {
+      materialItems: matItems,
+      laborRecords,
+      externalLaborRecords: extLaborRecords,
+      transportRecords,
+      packagingRecords,
+      otherExpenses,
+      plannedQuantity: pQty,
+      totalMaterialCost: totalMatCost,
+      totalLaborCost,
+      totalExternalLaborCost: totalExtLaborCost,
+      totalExternalManufacturingCost: totalExternalManuf,
+      totalTransportCost,
+      totalPackagingCost,
+      totalOtherExpenses: totalOtherCost,
+      productionCostBeforeTax: totalProdCostBeforeTax,
+      applyTax,
+      taxPercentage: n(taxPct),
+      taxAmount,
+      totalCostAfterTax,
+      costPerPiece,
+      profitPercentage: n(profitPct),
+      profitAmount,
+      suggestedSellingPrice: suggestedPrice,
+      discountPercentage: n(discountPct),
+      discountAmount,
+      finalSellingPrice: finalPrice,
+    });
+  }
+
+  const ORDER_STATUS_MAP: Record<string, { label: string; color: string }> = {
+    new: { label: 'جديد', color: Colors.info },
+    preparing: { label: 'تجهيز', color: '#9C6FFF' },
+    in_production: { label: 'في التصنيع', color: Colors.primary },
+    external_manufacturing: { label: 'تصنيع خارجي', color: Colors.warning },
+    finishing: { label: 'تشطيب', color: Colors.success },
+    packaging: { label: 'تغليف', color: '#5BAFFF' },
+    ready: { label: 'جاهز', color: Colors.success },
+    delivered: { label: 'تم التسليم', color: Colors.textMuted },
+    cancelled: { label: 'ملغي', color: Colors.error },
+  };
+
   const TABS: { id: Tab; label: string; icon: any; color: string }[] = [
     { id: 'materials', label: 'الخامات', icon: 'category', color: Colors.primary },
     { id: 'labor', label: 'عمالة', icon: 'people', color: '#9C6FFF' },
@@ -759,6 +804,7 @@ export function ArtworkCostModal({ visible, artworkId, artworkTitle, onClose }: 
     { id: 'transport', label: 'نقل', icon: 'local-shipping', color: Colors.info },
     { id: 'packaging', label: 'تغليف', icon: 'inventory', color: Colors.warning },
     { id: 'other', label: 'أخرى', icon: 'more-horiz', color: Colors.error },
+    { id: 'orders', label: `أوامر (${artworkOrders.length})`, icon: 'assignment', color: Colors.warning },
     { id: 'pricing', label: 'التسعير', icon: 'attach-money', color: Colors.primary },
     { id: 'history', label: `سجل (${existingCosts.length})`, icon: 'history', color: Colors.textMuted },
   ];
@@ -1048,6 +1094,108 @@ export function ArtworkCostModal({ visible, artworkId, artworkTitle, onClose }: 
                 </>
               ) : null}
 
+              {/* ORDERS TAB */}
+              {activeTab === 'orders' ? (
+                <>
+                  <STitle color={Colors.warning}>أوامر التصنيع المرتبطة</STitle>
+                  {artworkOrders.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: Spacing.xxxl }}>
+                      <MaterialIcons name="assignment" size={48} color={Colors.textMuted} />
+                      <Text style={{ color: Colors.textMuted, marginTop: Spacing.md, textAlign: 'center' }}>لا توجد أوامر تصنيع لهذا العمل الفني</Text>
+                      <Text style={{ color: Colors.textMuted, fontSize: FontSize.xs, marginTop: Spacing.sm, textAlign: 'center' }}>أضف أوامر التصنيع من تبويب التصنيع</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={od.infoBox}>
+                        <MaterialIcons name="info-outline" size={14} color={Colors.info} />
+                        <Text style={od.infoTxt}>اضغط "نقل التكلفة" لتحديث أمر التصنيع بالأرقام المحسوبة من تبويبات الخامات والعمالة والنقل والتغليف.</Text>
+                      </View>
+                      {/* Cost Summary Strip */}
+                      {totalProdCostBeforeTax > 0 ? (
+                        <View style={od.costStrip}>
+                          <View style={od.costItem}><Text style={od.costVal}>{totalMatCost.toLocaleString()}</Text><Text style={od.costLbl}>خامات</Text></View>
+                          <View style={od.costDivider} />
+                          <View style={od.costItem}><Text style={od.costVal}>{totalLaborCost.toLocaleString()}</Text><Text style={od.costLbl}>عمالة</Text></View>
+                          <View style={od.costDivider} />
+                          <View style={od.costItem}><Text style={[od.costVal, { color: Colors.primary }]}>{costPerPiece.toLocaleString()}</Text><Text style={od.costLbl}>للقطعة</Text></View>
+                          <View style={od.costDivider} />
+                          <View style={od.costItem}><Text style={[od.costVal, { color: Colors.success }]}>{finalPrice.toLocaleString()}</Text><Text style={od.costLbl}>البيع</Text></View>
+                        </View>
+                      ) : (
+                        <View style={od.warnBox}>
+                          <MaterialIcons name="warning" size={14} color={Colors.warning} />
+                          <Text style={od.warnTxt}>أضف الخامات والتكاليف أولاً ثم انقل البيانات للأوامر</Text>
+                        </View>
+                      )}
+                      {artworkOrders.map(order => {
+                        const si = ORDER_STATUS_MAP[order.status] || { label: order.status, color: Colors.textMuted };
+                        const hasCost = order.totalCostAfterTax > 0;
+                        const costDiff = totalCostAfterTax > 0 && hasCost ? totalCostAfterTax - order.totalCostAfterTax : 0;
+                        return (
+                          <View key={order.id} style={od.orderCard}>
+                            <View style={od.orderHeader}>
+                              <View style={[od.statusBadge, { backgroundColor: si.color + '20', borderColor: si.color + '60' }]}>
+                                <Text style={[od.statusTxt, { color: si.color }]}>{si.label}</Text>
+                              </View>
+                              <View style={{ flex: 1, alignItems: 'flex-end', paddingHorizontal: Spacing.sm }}>
+                                <Text style={od.orderNum}>{order.orderNumber}</Text>
+                                {order.customerName ? <Text style={od.customerName}>{order.customerName}</Text> : null}
+                              </View>
+                              <View style={od.qtyBox}>
+                                <Text style={od.qtyVal}>{order.actualQuantity}/{order.plannedQuantity}</Text>
+                                <Text style={od.qtyLbl}>قطعة</Text>
+                              </View>
+                            </View>
+
+                            {/* Existing cost in order vs current calculation */}
+                            <View style={od.costsRow}>
+                              <View style={od.costBlock}>
+                                <Text style={od.costBlockVal}>{(order.costPerPiece || 0).toLocaleString()}</Text>
+                                <Text style={od.costBlockLbl}>تكلفة مسجلة/قطعة</Text>
+                              </View>
+                              {totalProdCostBeforeTax > 0 ? (
+                                <>
+                                  <MaterialIcons name="compare-arrows" size={16} color={Colors.textMuted} />
+                                  <View style={od.costBlock}>
+                                    <Text style={[od.costBlockVal, { color: Colors.primary }]}>{costPerPiece.toLocaleString()}</Text>
+                                    <Text style={od.costBlockLbl}>محسوبة الآن/قطعة</Text>
+                                  </View>
+                                </>
+                              ) : null}
+                            </View>
+
+                            {costDiff !== 0 ? (
+                              <View style={[od.diffRow, { backgroundColor: costDiff > 0 ? Colors.warningSurface : Colors.successSurface }]}>
+                                <MaterialIcons name={costDiff > 0 ? 'trending-up' : 'trending-down'} size={14} color={costDiff > 0 ? Colors.warning : Colors.success} />
+                                <Text style={[od.diffTxt, { color: costDiff > 0 ? Colors.warning : Colors.success }]}>
+                                  {costDiff > 0 ? 'زيادة' : 'انخفاض'} {Math.abs(costDiff).toLocaleString()} ج.م عن التسجيل السابق
+                                </Text>
+                              </View>
+                            ) : null}
+
+                            <Pressable
+                              onPress={() => {
+                                if (totalProdCostBeforeTax <= 0) {
+                                  setActiveTab('materials');
+                                  return;
+                                }
+                                transferToOrder(order.id);
+                              }}
+                              style={[od.transferBtn, totalProdCostBeforeTax <= 0 && od.transferBtnDisabled]}
+                            >
+                              <MaterialIcons name="sync" size={16} color={totalProdCostBeforeTax > 0 ? Colors.textOnPrimary : Colors.textMuted} />
+                              <Text style={[od.transferBtnTxt, totalProdCostBeforeTax <= 0 && { color: Colors.textMuted }]}>
+                                {totalProdCostBeforeTax > 0 ? 'نقل التكلفة لهذا الأمر' : 'أضف تكاليف أولاً'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
+              ) : null}
+
               {/* HISTORY TAB */}
               {activeTab === 'history' ? (
                 <>
@@ -1085,7 +1233,7 @@ export function ArtworkCostModal({ visible, artworkId, artworkTitle, onClose }: 
             </ScrollView>
 
             {/* Bottom save shortcut (visible on non-pricing tabs) */}
-            {activeTab !== 'pricing' && activeTab !== 'history' ? (
+            {activeTab !== 'pricing' && activeTab !== 'history' && activeTab !== 'orders' ? (
               <View style={ms.bottomBar}>
                 <Pressable onPress={() => setActiveTab('pricing')} style={ms.nextBtn}>
                   <Text style={ms.nextBtnTxt}>التسعير والحفظ</Text>
@@ -1099,6 +1247,36 @@ export function ArtworkCostModal({ visible, artworkId, artworkTitle, onClose }: 
     </Modal>
   );
 }
+
+const od = StyleSheet.create({
+  infoBox: { flexDirection: 'row', gap: Spacing.sm, backgroundColor: Colors.infoSurface, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.info + '40', alignItems: 'flex-start' },
+  infoTxt: { flex: 1, fontSize: FontSize.xs, color: Colors.info, textAlign: 'right' },
+  warnBox: { flexDirection: 'row', gap: Spacing.sm, backgroundColor: Colors.warningSurface, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.warning + '40', alignItems: 'flex-start' },
+  warnTxt: { flex: 1, fontSize: FontSize.xs, color: Colors.warning, textAlign: 'right' },
+  costStrip: { flexDirection: 'row', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.border, justifyContent: 'space-around', alignItems: 'center' },
+  costItem: { alignItems: 'center' },
+  costVal: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  costLbl: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
+  costDivider: { width: 1, height: 28, backgroundColor: Colors.border },
+  orderCard: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.base, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.border },
+  orderHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md },
+  statusBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
+  statusTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
+  orderNum: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary, fontFamily: 'monospace' },
+  customerName: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  qtyBox: { alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.sm, paddingHorizontal: Spacing.sm, paddingVertical: 4 },
+  qtyVal: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
+  qtyLbl: { fontSize: 10, color: Colors.textMuted },
+  costsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.md, marginBottom: Spacing.sm },
+  costBlock: { alignItems: 'flex-end' },
+  costBlockVal: { fontSize: FontSize.base, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  costBlockLbl: { fontSize: 10, color: Colors.textMuted },
+  diffRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, borderRadius: Radius.sm, padding: Spacing.sm, marginBottom: Spacing.sm },
+  diffTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
+  transferBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: Spacing.md, marginTop: Spacing.sm },
+  transferBtnDisabled: { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border },
+  transferBtnTxt: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textOnPrimary },
+});
 
 const ms = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
