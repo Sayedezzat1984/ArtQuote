@@ -1,9 +1,8 @@
-
 // Powered by OnSpace.AI — Guest Gallery
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Dimensions,
-  ActivityIndicator, Animated, AppState, AppStateStatus, Switch,
+  ActivityIndicator, Animated, AppState, AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -22,7 +21,6 @@ const CARD_GAP = 12;
 const COLS = isTablet ? 3 : 2;
 const CARD_W = (SCREEN_W - (COLS + 1) * CARD_GAP * (isTablet ? 1.5 : 1.2)) / COLS;
 
-// Auto-sync interval in ms (every 60 seconds while gallery is open)
 const AUTO_SYNC_INTERVAL = 60_000;
 
 type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
@@ -32,100 +30,87 @@ export default function GuestGalleryScreen() {
   const { signOut } = useAuth();
   const { notificationsEnabled, requestNotificationPermission } = useVisitor();
   const router = useRouter();
+
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
   const [showNotifBanner, setShowNotifBanner] = useState(false);
-
-  // Refresh state
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
   const [newArtworkIds, setNewArtworkIds] = useState<Set<string>>(new Set());
+
   const knownIdsRef = useRef<Set<string>>(new Set());
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncing = useRef(false);
-  const appStateRef = useRef<AppStateStatus>('active');
+  const initialised = useRef(false);
 
-  // Filter: only show artworks that are visible to visitors (default true for backward compat)
+  // Filter: only show artworks visible to visitors
   const visibleArtworks = useMemo(() => {
-    return artworks.filter((a: Artwork) => (a as any).visibleToVisitors !== false);
+    return (artworks as Artwork[]).filter((a: Artwork) => (a as any).visibleToVisitors !== false);
   }, [artworks]);
 
-  // Initialise known IDs on first load (don't mark as new on mount)
+  // Use ref so callbacks can read latest value without re-creating
+  const visibleArtworksRef = useRef<Artwork[]>(visibleArtworks);
+  useEffect(() => { visibleArtworksRef.current = visibleArtworks; }, [visibleArtworks]);
+
+  // Initialise known IDs once after first real load
   useEffect(() => {
-    knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
-    // Show notification permission banner if not yet enabled (after 1.5s)
+    if (!initialised.current && visibleArtworks.length > 0) {
+      initialised.current = true;
+      knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
+    }
+  }, [visibleArtworks]);
+
+  // Check notification banner
+  useEffect(() => {
     const timer = setTimeout(async () => {
       const enabled = await areNotificationsEnabled();
       if (!enabled) setShowNotifBanner(true);
     }, 1500);
     return () => clearTimeout(timer);
-  }, [visibleArtworks]); // Dependency added to fix the error
+  }, []);
 
-  // ── Auto-sync: periodic while gallery is open ─────────────────────────────
-  useEffect(() => {
-    autoSyncTimer.current = setInterval(() => {
-      silentSync();
-    }, AUTO_SYNC_INTERVAL);
-
-    // Sync immediately when screen mounts
-    silentSync();
-
-    return () => {
-      if (autoSyncTimer.current) clearInterval(autoSyncTimer.current);
-    };
-  }, [silentSync]); // Dependency added to fix the error
-
-  // ── Auto-sync: when app returns to foreground ─────────────────────────────
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      appStateRef.current = state;
-      if (state === 'active') {
-        silentSync();
-      }
-    });
-    return () => sub.remove();
-  }, [silentSync]); // Dependency added to fix the error
-
-  // ── Silent sync: doesn't show loading but detects new artworks ────────────
+  // Silent sync — reads latest artworks via ref to avoid stale closures
   const silentSync = useCallback(async () => {
     if (isSyncing.current) return;
     isSyncing.current = true;
     try {
       const prevIds = new Set(knownIdsRef.current);
       await forceSyncNow();
-      // Brief wait for state to settle
       await new Promise(res => setTimeout(res, 300));
-      const currentIds = new Set<string>(
-        visibleArtworks.map((a: Artwork) => a.id)
-      );
+
+      const current = visibleArtworksRef.current;
       const addedIds = new Set<string>();
-      currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
-      knownIdsRef.current = currentIds;
+      current.forEach((a: Artwork) => { if (!prevIds.has(a.id)) addedIds.add(a.id); });
+      knownIdsRef.current = new Set(current.map((a: Artwork) => a.id));
 
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
-        // Auto-clear NEW badges after 10 seconds
         setTimeout(() => setNewArtworkIds(new Set()), 10_000);
-
-        // ── Push notification for new artworks ──────────────────────────
-        // If app is in background, show system notification
-        // If in foreground, notification handler will still show it (+ toast below)
-        const newArtworkTitles = visibleArtworks
-          .filter((a: Artwork) => addedIds.has(a.id))
-          .map((a: Artwork) => a.title);
-
-        const firstTitle = newArtworkTitles[0] || 'عمل جديد';
+        const firstTitle = current.find((a: Artwork) => addedIds.has(a.id))?.title || 'عمل جديد';
         await notifyNewArtwork(firstTitle, addedIds.size);
       }
-    } catch {
-      // Silent — don't surface errors for background sync
-    } finally {
+    } catch { /* silent */ } finally {
       isSyncing.current = false;
     }
-  }, [forceSyncNow, visibleArtworks]);
+  }, [forceSyncNow]);
 
-  function showToast(status: RefreshStatus) {
+  // Auto-sync interval
+  useEffect(() => {
+    silentSync();
+    autoSyncTimer.current = setInterval(silentSync, AUTO_SYNC_INTERVAL);
+    return () => { if (autoSyncTimer.current) clearInterval(autoSyncTimer.current); };
+  }, [silentSync]);
+
+  // Sync when app comes to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') silentSync();
+    });
+    return () => sub.remove();
+  }, [silentSync]);
+
+  function showToast() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     Animated.sequence([
       Animated.timing(toastOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
@@ -135,7 +120,6 @@ export default function GuestGalleryScreen() {
     toastTimer.current = setTimeout(() => setRefreshStatus('idle'), 3000);
   }
 
-  // ── Manual refresh ────────────────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
     if (refreshStatus === 'refreshing') return;
     setRefreshStatus('refreshing');
@@ -143,10 +127,11 @@ export default function GuestGalleryScreen() {
       const prevIds = new Set(knownIdsRef.current);
       await forceSyncNow();
       await new Promise(res => setTimeout(res, 400));
-      const currentIds = new Set<string>(visibleArtworks.map((a: Artwork) => a.id));
+
+      const current = visibleArtworksRef.current;
       const addedIds = new Set<string>();
-      currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
-      knownIdsRef.current = currentIds;
+      current.forEach((a: Artwork) => { if (!prevIds.has(a.id)) addedIds.add(a.id); });
+      knownIdsRef.current = new Set(current.map((a: Artwork) => a.id));
 
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
@@ -155,13 +140,12 @@ export default function GuestGalleryScreen() {
       } else {
         setRefreshStatus('done');
       }
-      showToast(refreshStatus === 'new' ? 'new' : 'done');
+      showToast();
     } catch {
       setRefreshStatus('idle');
     }
-  }, [refreshStatus, forceSyncNow, visibleArtworks]);
+  }, [refreshStatus, forceSyncNow]);
 
-  // ── Enable notifications ──────────────────────────────────────────────────
   const handleEnableNotifications = useCallback(async () => {
     const granted = await requestNotificationPermission();
     if (granted) setShowNotifBanner(false);
@@ -194,7 +178,6 @@ export default function GuestGalleryScreen() {
           <Text style={styles.title}>سيد عزت</Text>
           <Text style={styles.subtitle}>معرض الأعمال الفنية</Text>
         </View>
-        {/* Refresh Button */}
         <Pressable
           onPress={handleRefresh}
           disabled={refreshStatus === 'refreshing'}
@@ -254,7 +237,6 @@ export default function GuestGalleryScreen() {
         </View>
       ) : null}
 
-      {/* Divider line */}
       <View style={styles.headerDivider} />
 
       {/* Search */}
@@ -326,7 +308,6 @@ export default function GuestGalleryScreen() {
             onPress={() => router.push(`/(guest)/${item.id}`)}
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
           >
-            {/* Image */}
             <View style={styles.imgContainer}>
               {item.image ? (
                 <Image
@@ -340,21 +321,17 @@ export default function GuestGalleryScreen() {
                   <MaterialIcons name="palette" size={32} color={Colors.primary + '60'} />
                 </View>
               )}
-              {/* Category badge */}
               {item.category ? (
                 <View style={styles.catBadge}>
                   <Text style={styles.catBadgeText} numberOfLines={1}>{item.category}</Text>
                 </View>
               ) : null}
-              {/* NEW badge */}
               {newArtworkIds.has(item.id) ? (
                 <View style={styles.newBadge}>
                   <Text style={styles.newBadgeText}>جديد</Text>
                 </View>
               ) : null}
             </View>
-
-            {/* Name */}
             <View style={styles.cardBody}>
               <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
               {item.year ? <Text style={styles.cardYear}>{item.year}</Text> : null}
@@ -363,7 +340,7 @@ export default function GuestGalleryScreen() {
         )}
       />
 
-      {/* Toast notification */}
+      {/* Toast */}
       {toastMessage ? (
         <Animated.View style={[styles.toast, { opacity: toastOpacity }, refreshStatus === 'new' && styles.toastNew]}>
           <MaterialIcons
@@ -382,283 +359,128 @@ export default function GuestGalleryScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-
-  // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
   },
   backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: Colors.border,
   },
   backBtnText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   titleBlock: { alignItems: 'center', flex: 1 },
   title: {
     fontSize: isTablet ? FontSize.xxl : FontSize.xl,
-    fontWeight: FontWeight.extrabold,
-    color: Colors.primary,
-    letterSpacing: 0.5,
+    fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 0.5,
   },
   subtitle: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 1 },
-
-  // Refresh button
   refreshBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 40, height: 40, borderRadius: 20,
     backgroundColor: Colors.primarySurface,
-    borderWidth: 1,
-    borderColor: Colors.primary + '50',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1, borderColor: Colors.primary + '50',
+    alignItems: 'center', justifyContent: 'center',
   },
-  refreshBtnActive: {
-    backgroundColor: Colors.surfaceElevated,
-    borderColor: Colors.border,
-  },
-
-  // Notification banner
+  refreshBtnActive: { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border },
   notifBanner: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: Colors.primarySurface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary + '40',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
+    marginHorizontal: 16, marginBottom: 8,
+    backgroundColor: Colors.primarySurface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.primary + '40',
+    paddingHorizontal: 14, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
   },
-  notifBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  notifBannerTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
-    textAlign: 'right',
-  },
-  notifBannerSub: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: 'right',
-    marginTop: 1,
-  },
-  notifBannerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  notifEnableBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  notifEnableBtnText: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.bold,
-    color: '#0d0d0f',
-  },
+  notifBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  notifBannerTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
+  notifBannerSub: { fontSize: 11, color: Colors.textSecondary, textAlign: 'right', marginTop: 1 },
+  notifBannerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  notifEnableBtn: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 6 },
+  notifEnableBtnText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: '#0d0d0f' },
   notifDismissBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: Colors.border,
   },
-
-  // Notification active bar
   notifActiveBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 5,
-    backgroundColor: Colors.successSurface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.success + '30',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 5, backgroundColor: Colors.successSurface,
+    borderBottomWidth: 1, borderBottomColor: Colors.success + '30',
   },
-  notifActiveText: {
-    fontSize: 11,
-    color: Colors.success,
-    fontWeight: FontWeight.medium,
-  },
-
-  // Status bar (while refreshing)
+  notifActiveText: { fontSize: 11, color: Colors.success, fontWeight: FontWeight.medium },
   statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primarySurface,
-    paddingVertical: 7,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.primary + '30',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.primarySurface, paddingVertical: 7, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: Colors.primary + '30',
   },
-  statusBarText: {
-    fontSize: FontSize.xs,
-    color: Colors.primary,
-    fontWeight: FontWeight.semibold,
-  },
-
+  statusBarText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   headerDivider: { height: 1, backgroundColor: Colors.border },
-
-  // Search
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.lg,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.lg,
+    paddingHorizontal: 14, borderWidth: 1, borderColor: Colors.border,
   },
   searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: FontSize.base,
-    color: Colors.textPrimary,
-    marginLeft: 8,
+    flex: 1, paddingVertical: 10, fontSize: FontSize.base,
+    color: Colors.textPrimary, marginLeft: 8,
   },
-
-  // Category filter
   catOuter: { height: 46 },
   catContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   catChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border,
   },
   catChipActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
   catChipText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   catChipTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
-
-  // Count
   countRow: { paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4 },
   countText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right' },
-
-  // Grid
   grid: { paddingHorizontal: CARD_GAP, paddingBottom: 32 },
   columnWrapper: { gap: CARD_GAP, marginBottom: CARD_GAP },
-
-  // Card
   card: {
-    width: CARD_W,
-    backgroundColor: Colors.card,
-    borderRadius: Radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadow.sm,
+    width: CARD_W, backgroundColor: Colors.card, borderRadius: Radius.lg,
+    overflow: 'hidden', borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
   },
   cardPressed: { opacity: 0.88, transform: [{ scale: 0.97 }] },
   imgContainer: {
-    width: '100%',
-    height: CARD_W * 1.15,
-    backgroundColor: Colors.surfaceElevated,
-    position: 'relative',
+    width: '100%', height: CARD_W * 1.15,
+    backgroundColor: Colors.surfaceElevated, position: 'relative',
   },
   img: { width: '100%', height: '100%' },
   imgPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1, alignItems: 'center', justifyContent: 'center',
     backgroundColor: Colors.primarySurface,
   },
   catBadge: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    maxWidth: CARD_W - 16,
+    position: 'absolute', bottom: 6, right: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 3, maxWidth: CARD_W - 16,
   },
   catBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.semibold },
-
-  // NEW badge
   newBadge: {
-    position: 'absolute',
-    top: 7,
-    left: 7,
-    backgroundColor: Colors.success,
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: '#fff',
+    position: 'absolute', top: 7, left: 7,
+    backgroundColor: Colors.success, borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: '#fff',
   },
-  newBadgeText: {
-    fontSize: 9,
-    color: '#fff',
-    fontWeight: FontWeight.extrabold,
-    letterSpacing: 0.5,
-  },
-
+  newBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.extrabold, letterSpacing: 0.5 },
   cardBody: { padding: 10, paddingTop: 8 },
   cardTitle: {
     fontSize: isTablet ? FontSize.base : FontSize.sm,
-    fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
-    textAlign: 'right',
-    lineHeight: 20,
+    fontWeight: FontWeight.bold, color: Colors.textPrimary,
+    textAlign: 'right', lineHeight: 20,
   },
   cardYear: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 2 },
-
-  // Empty
   empty: { alignItems: 'center', paddingVertical: 80 },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: 16 },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 6, textAlign: 'center' },
-
-  // Toast
   toast: {
-    position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.card,
-    borderRadius: Radius.full,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: Colors.primary + '50',
-    ...Shadow.md,
+    position: 'absolute', bottom: 24, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.card, borderRadius: Radius.full,
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderWidth: 1, borderColor: Colors.primary + '50', ...Shadow.md,
   },
-  toastNew: {
-    borderColor: Colors.success + '70',
-    backgroundColor: Colors.successSurface,
-  },
-  toastText: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
-    color: Colors.primary,
-  },
+  toastNew: { borderColor: Colors.success + '70', backgroundColor: Colors.successSurface },
+  toastText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.primary },
 });
