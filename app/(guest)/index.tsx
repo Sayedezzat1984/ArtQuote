@@ -21,12 +21,16 @@ const CARD_GAP = 12;
 const COLS = isTablet ? 3 : 2;
 const CARD_W = (SCREEN_W - (COLS + 1) * CARD_GAP * (isTablet ? 1.5 : 1.2)) / COLS;
 
+/** Auto-sync interval (60 s) */
 const AUTO_SYNC_INTERVAL = 60_000;
 
 type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
 
 export default function GuestGalleryScreen() {
-  const { artworks, artworkCategories, forceSyncNow } = useApp() as any;
+  const {
+    artworks, artworkCategories, artworksReady,
+    syncGuestGallery, forceSyncNow,
+  } = useApp() as any;
   const { signOut } = useAuth();
   const {
     isRegistered, isLoadingVisitor,
@@ -40,6 +44,23 @@ export default function GuestGalleryScreen() {
       router.replace('/(guest)/register');
     }
   }, [isLoadingVisitor, isRegistered]);
+
+  // ── Tracks whether we have attempted a cold-start fetch ─────────────────
+  const coldStartDone = useRef(false);
+  const [gallerySyncing, setGallerySyncing] = useState(false);
+
+  // ── Cold-start: immediately fetch artworks from Firestore ────────────────
+  useEffect(() => {
+    if (!isRegistered || isLoadingVisitor) return;
+    if (coldStartDone.current) return;
+    coldStartDone.current = true;
+
+    // If artworks already arrived via real-time listener, skip
+    if (artworksReady && artworks.length > 0) return;
+
+    setGallerySyncing(true);
+    syncGuestGallery().finally(() => setGallerySyncing(false));
+  }, [isRegistered, isLoadingVisitor, artworksReady, artworks.length, syncGuestGallery]);
 
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
@@ -80,13 +101,16 @@ export default function GuestGalleryScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Silent sync — reads latest artworks via ref to avoid stale closures
+  // ── Silent background sync ───────────────────────────────────────────────
   const silentSync = useCallback(async () => {
     if (isSyncing.current) return;
     isSyncing.current = true;
     try {
       const prevIds = new Set(knownIdsRef.current);
-      await forceSyncNow();
+
+      // Use syncGuestGallery for a direct Firestore fetch (no auth required)
+      await syncGuestGallery();
+      // Small delay to let state settle
       await new Promise(res => setTimeout(res, 300));
 
       const current = visibleArtworksRef.current;
@@ -103,14 +127,14 @@ export default function GuestGalleryScreen() {
     } catch { /* silent */ } finally {
       isSyncing.current = false;
     }
-  }, [forceSyncNow]);
+  }, [syncGuestGallery]);
 
   // Auto-sync interval
   useEffect(() => {
-    silentSync();
+    if (!isRegistered) return;
     autoSyncTimer.current = setInterval(silentSync, AUTO_SYNC_INTERVAL);
     return () => { if (autoSyncTimer.current) clearInterval(autoSyncTimer.current); };
-  }, [silentSync]);
+  }, [isRegistered, silentSync]);
 
   // Sync when app comes to foreground
   useEffect(() => {
@@ -130,12 +154,14 @@ export default function GuestGalleryScreen() {
     toastTimer.current = setTimeout(() => setRefreshStatus('idle'), 3000);
   }
 
+  // ── Manual refresh button ────────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
     if (refreshStatus === 'refreshing') return;
     setRefreshStatus('refreshing');
     try {
       const prevIds = new Set(knownIdsRef.current);
-      await forceSyncNow();
+
+      await syncGuestGallery();
       await new Promise(res => setTimeout(res, 400));
 
       const current = visibleArtworksRef.current;
@@ -154,7 +180,7 @@ export default function GuestGalleryScreen() {
     } catch {
       setRefreshStatus('idle');
     }
-  }, [refreshStatus, forceSyncNow]);
+  }, [refreshStatus, syncGuestGallery]);
 
   const handleEnableNotifications = useCallback(async () => {
     const granted = await requestNotificationPermission();
@@ -172,8 +198,20 @@ export default function GuestGalleryScreen() {
     });
   }, [visibleArtworks, search, catFilter]);
 
-  // Show loading while checking registration
+  // ── Loading states ───────────────────────────────────────────────────────
+
+  // 1. Still checking visitor registration
   if (isLoadingVisitor) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>جاري التحقق...</Text>
+      </View>
+    );
+  }
+
+  // 2. Not registered — redirect in flight
+  if (!isRegistered) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -181,11 +219,13 @@ export default function GuestGalleryScreen() {
     );
   }
 
-  // Don't render gallery until registered (redirect is in-flight)
-  if (!isRegistered) {
+  // 3. Cold-start fetch still running AND no cached data yet
+  if (gallerySyncing && !artworksReady && visibleArtworks.length === 0) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>جاري تحميل المعرض...</Text>
+        <Text style={styles.loadingSubText}>يتم جلب أحدث الأعمال الفنية</Text>
       </View>
     );
   }
@@ -228,6 +268,14 @@ export default function GuestGalleryScreen() {
         </Pressable>
       </View>
 
+      {/* Sync status bar */}
+      {(gallerySyncing || refreshStatus === 'refreshing') ? (
+        <View style={styles.statusBar}>
+          <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />
+          <Text style={styles.statusBarText}>جاري تحديث الأعمال...</Text>
+        </View>
+      ) : null}
+
       {/* Notification permission banner */}
       {showNotifBanner && !notificationsEnabled ? (
         <View style={styles.notifBanner}>
@@ -254,14 +302,6 @@ export default function GuestGalleryScreen() {
         <View style={styles.notifActiveBar}>
           <MaterialIcons name="notifications-active" size={13} color={Colors.success} />
           <Text style={styles.notifActiveText}>ستصلك إشعارات عند إضافة أعمال جديدة</Text>
-        </View>
-      ) : null}
-
-      {/* Refreshing status bar */}
-      {refreshStatus === 'refreshing' ? (
-        <View style={styles.statusBar}>
-          <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />
-          <Text style={styles.statusBarText}>جاري تحديث الأعمال...</Text>
         </View>
       ) : null}
 
@@ -326,9 +366,22 @@ export default function GuestGalleryScreen() {
         columnWrapperStyle={styles.columnWrapper}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <MaterialIcons name="palette" size={64} color={Colors.textMuted} />
-            <Text style={styles.emptyTitle}>لا توجد أعمال</Text>
-            <Text style={styles.emptySubtitle}>جرّب تعديل كلمة البحث أو الفئة</Text>
+            {gallerySyncing ? (
+              <>
+                <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: 16 }} />
+                <Text style={styles.emptyTitle}>جاري تحميل الأعمال...</Text>
+              </>
+            ) : (
+              <>
+                <MaterialIcons name="palette" size={64} color={Colors.textMuted} />
+                <Text style={styles.emptyTitle}>لا توجد أعمال</Text>
+                <Text style={styles.emptySubtitle}>جرّب تعديل كلمة البحث أو الفئة</Text>
+                <Pressable onPress={handleRefresh} style={styles.retryBtn}>
+                  <MaterialIcons name="refresh" size={16} color={Colors.primary} />
+                  <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         }
         renderItem={({ item }) => (
@@ -391,6 +444,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: FontSize.base,
+    color: Colors.primary,
+    fontWeight: FontWeight.semibold,
+    textAlign: 'center',
+  },
+  loadingSubText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
@@ -417,6 +482,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   refreshBtnActive: { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border },
+  statusBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.primarySurface, paddingVertical: 7, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: Colors.primary + '30',
+  },
+  statusBarText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   notifBanner: {
     marginHorizontal: 16, marginBottom: 8,
     backgroundColor: Colors.primarySurface, borderRadius: Radius.lg,
@@ -441,12 +512,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.success + '30',
   },
   notifActiveText: { fontSize: 11, color: Colors.success, fontWeight: FontWeight.medium },
-  statusBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.primarySurface, paddingVertical: 7, gap: 8,
-    borderBottomWidth: 1, borderBottomColor: Colors.primary + '30',
-  },
-  statusBarText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   headerDivider: { height: 1, backgroundColor: Colors.border },
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
   searchBar: {
@@ -505,9 +570,16 @@ const styles = StyleSheet.create({
     textAlign: 'right', lineHeight: 20,
   },
   cardYear: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 2 },
-  empty: { alignItems: 'center', paddingVertical: 80 },
-  emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: 16 },
-  emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 6, textAlign: 'center' },
+  empty: { alignItems: 'center', paddingVertical: 80, gap: 8 },
+  emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: 8 },
+  emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center' },
+  retryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 16, backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.full, paddingHorizontal: 20, paddingVertical: 10,
+    borderWidth: 1, borderColor: Colors.primary,
+  },
+  retryBtnText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.semibold },
   toast: {
     position: 'absolute', bottom: 24, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center', gap: 8,

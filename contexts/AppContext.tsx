@@ -10,7 +10,7 @@ import { COLLECTIONS } from '@/services/firebase';
 import {
   loadArtworks, saveArtworks, loadCustomers, saveCustomers,
   loadQuotes, saveQuotes, loadMaterials, saveMaterials,
-  loadCategories, saveCategories, loadSuppliers, saveSuppliers,
+  loadCategories, saveCategories as saveCategoriesLocal, loadSuppliers, saveSuppliers,
   loadFullMaterials, saveFullMaterials, loadArtworkCosts, saveArtworkCosts,
   loadWorkers, saveWorkers, loadProductionOrders, saveProductionOrders,
   loadInternalManufacturing, saveInternalManufacturing,
@@ -429,6 +429,8 @@ interface AppContextType {
   quotes: Quote[];
   materials: Material[];
   loading: boolean;
+  /** True once Firestore has delivered its first artworks snapshot (guest-safe) */
+  artworksReady: boolean;
   syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
   pendingOpsCount: number;
   isOnline: boolean;
@@ -484,6 +486,8 @@ interface AppContextType {
   restoreBackup: (data: Record<string, any[]>) => Promise<void>;
   migrateLocalToFirestore: () => Promise<{ migrated: number; skipped: number }>;
   forceSyncNow: () => Promise<void>;
+  /** Immediately fetch artworks from Firestore and update state — for guest cold-start */
+  syncGuestGallery: () => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -526,6 +530,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [internalManufacturing, setInternalManufacturing] = useState<InternalManufacturing[]>([]);
   const [externalManufacturing, setExternalManufacturing] = useState<ExternalManufacturing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [artworksReady, setArtworksReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline' | 'error'>('idle');
   const [pendingOpsCount, setPendingOpsCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
@@ -581,9 +586,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return unsub;
     };
 
-    subs.push(setupListener(COLLECTIONS.artworks, setArtworks));
-    subs.push(setupListener(COLLECTIONS.customers, setCustomers));
-    subs.push(setupListener(COLLECTIONS.quotes, setQuotes));
+    // Artworks: mark ready on first snapshot so guest gallery doesn't show empty state
+    const artworkUnsub = listenCollection(
+      COLLECTIONS.artworks,
+      d => {
+        if (mounted) {
+          setArtworks(d as Artwork[]);
+          setArtworksReady(true);
+          setSyncStatus('synced');
+        }
+      },
+      () => {
+        if (mounted) {
+          // Mark ready even on error so we fall back to cache gracefully
+          setArtworksReady(true);
+          setSyncStatus('offline');
+        }
+      },
+    );
+    subs.push(artworkUnsub);
+    subs.push(setupListener(COLLECTIONS.customers, setCustomers as any));
+    subs.push(setupListener(COLLECTIONS.quotes, setQuotes as any));
     subs.push(setupListener(COLLECTIONS.fullMaterials, setFullMaterials));
     subs.push(setupListener(COLLECTIONS.suppliers, setSuppliers));
     subs.push(setupListener(COLLECTIONS.artworkCosts, setArtworkCosts));
@@ -643,7 +666,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadCategories(), loadSuppliers(), loadFullMaterials(), loadArtworkCosts(),
         loadWorkers(), loadProductionOrders(), loadInternalManufacturing(), loadExternalManufacturing(),
       ]);
-      setArtworks(prev => prev.length ? prev : a);
+      setArtworks(prev => { if (prev.length) return prev; if (a.length) setArtworksReady(true); return a; });
       setCustomers(prev => prev.length ? prev : c);
       setQuotes(prev => prev.length ? prev : q);
       setMaterials(m);
@@ -687,6 +710,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSyncStatus('error');
     }
   }, [refreshPendingCount]);
+
+  // ─── Guest gallery sync: one-shot Firestore fetch for immediate cold-start ──
+  const syncGuestGallery = useCallback(async () => {
+    try {
+      setSyncStatus('syncing');
+      const [freshArtworks, freshCats, freshSettings] = await Promise.all([
+        fetchOnce(COLLECTIONS.artworks),
+        fetchOnce(COLLECTIONS.categories),
+        fetchOnce('appSettings'),
+      ]);
+      if (freshArtworks.length > 0) {
+        setArtworks(freshArtworks as Artwork[]);
+        setArtworksReady(true);
+        // Update cache
+        saveArtworks(freshArtworks as Artwork[]).catch(() => {});
+      }
+      if (freshCats.length > 0) {
+        setArtworkCategories(freshCats as ArtworkCategory[]);
+        saveCategoriesLocal(freshCats as ArtworkCategory[]).catch(() => {});
+      }
+      if (freshSettings.length > 0) {
+        const merged: AppSettings = { whatsappNumber: '' };
+        freshSettings.forEach((item: any) => { Object.assign(merged, item); });
+        setAppSettings(merged);
+        try { await AsyncStorage.setItem('appSettings', JSON.stringify(merged)); } catch {}
+      }
+      setSyncStatus('synced');
+    } catch {
+      setSyncStatus('offline');
+      // Silently fall back to whatever is in state from cache
+    }
+  }, []);
 
   // ─── Migration: local AsyncStorage → Firestore ────────────────────────────
   const migrateLocalToFirestore = useCallback(async (): Promise<{ migrated: number; skipped: number }> => {
@@ -1077,7 +1132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      artworks, customers, quotes, materials, loading, syncStatus,
+      artworks, customers, quotes, materials, loading, artworksReady, syncStatus,
       pendingOpsCount, isOnline, appSettings,
       artworkCategories, suppliers, fullMaterials, artworkCosts,
       workers, productionOrders, internalManufacturing, externalManufacturing,
@@ -1093,7 +1148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
       addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
       addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
-      updateAppSettings, restoreBackup, migrateLocalToFirestore, forceSyncNow,
+      updateAppSettings, restoreBackup, migrateLocalToFirestore, forceSyncNow, syncGuestGallery,
     }}>
       {children}
     </AppContext.Provider>
