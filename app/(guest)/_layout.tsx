@@ -14,10 +14,11 @@ function GuestGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoadingVisitor) return;
     const inRegister = segments.includes('register' as any);
+    const inIndex = segments.includes('index' as any) || (!inRegister && segments[segments.length - 1] === '(guest)');
     if (!isRegistered && !inRegister) {
       router.replace('/(guest)/register');
     } else if (isRegistered && inRegister) {
-      router.replace('/(guest)/');
+      router.replace('/(guest)/index');
     }
   }, [isRegistered, isLoadingVisitor, segments]);
 

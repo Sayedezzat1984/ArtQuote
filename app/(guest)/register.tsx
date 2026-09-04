@@ -32,7 +32,7 @@ export default function VisitorRegisterScreen() {
     setLoading(true);
     try {
       await registerVisitor(trimName, trimPhone);
-      router.replace('/(guest)/');
+      router.replace('/(guest)/index');
     } catch {
       setError('حدث خطأ، حاول مجدداً');
     } finally {
@@ -145,7 +145,7 @@ export default function VisitorRegisterScreen() {
                 <ActivityIndicator size="small" color="#0d0d0f" />
               ) : (
                 <>
-                  <MaterialIcons name="gallery-thumbnail" size={20} color="#0d0d0f" />
+                  <MaterialIcons name="collections" size={20} color="#0d0d0f" />
                   <Text style={styles.enterBtnText}>دخول المعرض</Text>
                 </>
               )}
