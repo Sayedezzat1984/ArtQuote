@@ -38,6 +38,8 @@ export interface Artwork {
   year: string;
   available: boolean;
   showPriceToCustomer: boolean;
+  visibleToVisitors: boolean;
+  visibleToVisitors: boolean;
   image: string | null;
   images: string[];
   materialIds: string[];
@@ -369,6 +371,8 @@ export interface ArtworkCostSheet {
   deliveryCost: number;
   installationPriceCost: number;
   showPriceToCustomer: boolean;
+  visibleToVisitors: boolean;
+  visibleToVisitors: boolean;
   notes: string;
   createdAt: string;
 }

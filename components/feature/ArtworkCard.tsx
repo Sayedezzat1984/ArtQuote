@@ -12,8 +12,8 @@ interface ArtworkCardProps {
   artwork: Artwork;
   materials: Material[];
   onPress: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 export function ArtworkCard({ artwork, materials, onPress, onEdit, onDelete }: ArtworkCardProps) {
@@ -35,6 +35,17 @@ export function ArtworkCard({ artwork, materials, onPress, onEdit, onDelete }: A
         <View style={styles.imageOverlay}>
           <Badge label={artwork.available ? 'متاح' : 'مباع'} variant={artwork.available ? 'success' : 'error'} />
         </View>
+        {/* Visitor visibility badge — admin indicator */}
+        {(artwork as any).visibleToVisitors === false ? (
+          <View style={styles.hiddenBadge}>
+            <MaterialIcons name="visibility-off" size={11} color="#fff" />
+            <Text style={styles.hiddenBadgeText}>مخفي</Text>
+          </View>
+        ) : (
+          <View style={styles.visibleBadge}>
+            <MaterialIcons name="people" size={11} color={Colors.success} />
+          </View>
+        )}
         {imageCount > 1 && (
           <View style={styles.imgCountBadge}>
             <MaterialIcons name="photo-library" size={12} color="#fff" />
@@ -72,14 +83,18 @@ export function ArtworkCard({ artwork, materials, onPress, onEdit, onDelete }: A
 
         <View style={styles.footer}>
           <View style={styles.actions}>
-            <Pressable onPress={onEdit} style={styles.actionBtn} hitSlop={8}>
-              <MaterialIcons name="edit" size={18} color={Colors.primary} />
-              <Text style={styles.actionText}>تعديل</Text>
-            </Pressable>
-            <Pressable onPress={onDelete} style={styles.actionBtn} hitSlop={8}>
-              <MaterialIcons name="delete-outline" size={18} color={Colors.error} />
-              <Text style={[styles.actionText, { color: Colors.error }]}>حذف</Text>
-            </Pressable>
+            {onEdit ? (
+              <Pressable onPress={onEdit} style={styles.actionBtn} hitSlop={8}>
+                <MaterialIcons name="edit" size={18} color={Colors.primary} />
+                <Text style={styles.actionText}>تعديل</Text>
+              </Pressable>
+            ) : null}
+            {onDelete ? (
+              <Pressable onPress={onDelete} style={styles.actionBtn} hitSlop={8}>
+                <MaterialIcons name="delete-outline" size={18} color={Colors.error} />
+                <Text style={[styles.actionText, { color: Colors.error }]}>حذف</Text>
+              </Pressable>
+            ) : null}
           </View>
           <Text style={styles.price}>{artwork.price.toLocaleString()} {currency}</Text>
         </View>
@@ -101,6 +116,19 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   imageOverlay: { position: 'absolute', top: Spacing.sm, right: Spacing.sm },
+  hiddenBadge: {
+    position: 'absolute', bottom: Spacing.sm, right: Spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: Radius.full,
+    paddingHorizontal: 7, paddingVertical: 3,
+  },
+  hiddenBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.semibold },
+  visibleBadge: {
+    position: 'absolute', bottom: Spacing.sm, right: Spacing.sm,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   imgCountBadge: {
     position: 'absolute', bottom: Spacing.sm, left: Spacing.sm,
     flexDirection: 'row', alignItems: 'center', gap: 3,

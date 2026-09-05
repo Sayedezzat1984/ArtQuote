@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Dimensions,
-  ActivityIndicator, Animated,
+  ActivityIndicator, Animated, AppState, AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -19,6 +19,9 @@ const CARD_GAP = 12;
 const COLS = isTablet ? 3 : 2;
 const CARD_W = (SCREEN_W - (COLS + 1) * CARD_GAP * (isTablet ? 1.5 : 1.2)) / COLS;
 
+// Auto-sync interval in ms (every 60 seconds while gallery is open)
+const AUTO_SYNC_INTERVAL = 60_000;
+
 type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
 
 export default function GuestGalleryScreen() {
@@ -31,17 +34,78 @@ export default function GuestGalleryScreen() {
   // Refresh state
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
   const [newArtworkIds, setNewArtworkIds] = useState<Set<string>>(new Set());
-  const knownIdsRef = useRef<Set<string>>(new Set(artworks.map((a: Artwork) => a.id)));
+  const knownIdsRef = useRef<Set<string>>(new Set());
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isSyncing = useRef(false);
 
-  // Track known artwork IDs on first load (not counting as "new")
+  // Filter: only show artworks that are visible to visitors (default true for backward compat)
+  const visibleArtworks = useMemo(() => {
+    return artworks.filter((a: Artwork) => (a as any).visibleToVisitors !== false);
+  }, [artworks]);
+
+  // Initialise known IDs on first load (don't mark as new on mount)
   useEffect(() => {
-    knownIdsRef.current = new Set(artworks.map((a: Artwork) => a.id));
+    knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
 
-  function showToast() {
+  // ── Auto-sync: periodic while gallery is open ─────────────────────────────
+  useEffect(() => {
+    // Start interval
+    autoSyncTimer.current = setInterval(() => {
+      silentSync();
+    }, AUTO_SYNC_INTERVAL);
+
+    // Sync immediately when screen mounts
+    silentSync();
+
+    return () => {
+      if (autoSyncTimer.current) clearInterval(autoSyncTimer.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Auto-sync: when app returns to foreground ─────────────────────────────
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        silentSync();
+      }
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Silent sync: doesn't show loading but detects new artworks ────────────
+  const silentSync = useCallback(async () => {
+    if (isSyncing.current) return;
+    isSyncing.current = true;
+    try {
+      const prevIds = new Set(knownIdsRef.current);
+      await forceSyncNow();
+      // Brief wait for state to settle
+      await new Promise(res => setTimeout(res, 300));
+      const currentIds = new Set<string>(
+        visibleArtworks.map((a: Artwork) => a.id)
+      );
+      const addedIds = new Set<string>();
+      currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
+      knownIdsRef.current = currentIds;
+      if (addedIds.size > 0) {
+        setNewArtworkIds(addedIds);
+        // Auto-clear NEW badges after 10 seconds
+        setTimeout(() => setNewArtworkIds(new Set()), 10_000);
+      }
+    } catch {
+      // Silent — don't surface errors for background sync
+    } finally {
+      isSyncing.current = false;
+    }
+  }, [forceSyncNow, visibleArtworks]);
+
+  function showToast(status: RefreshStatus) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     Animated.sequence([
       Animated.timing(toastOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
@@ -51,46 +115,42 @@ export default function GuestGalleryScreen() {
     toastTimer.current = setTimeout(() => setRefreshStatus('idle'), 3000);
   }
 
+  // ── Manual refresh ────────────────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
     if (refreshStatus === 'refreshing') return;
     setRefreshStatus('refreshing');
     try {
       const prevIds = new Set(knownIdsRef.current);
       await forceSyncNow();
-      // After sync, artworks state is updated by AppContext listener
-      // Give a brief moment for state to settle
       await new Promise(res => setTimeout(res, 400));
-      // Detect new artworks
-      const currentIds = new Set<string>(artworks.map((a: Artwork) => a.id));
+      const currentIds = new Set<string>(visibleArtworks.map((a: Artwork) => a.id));
       const addedIds = new Set<string>();
       currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
-
       knownIdsRef.current = currentIds;
 
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
         setRefreshStatus('new');
-        // Auto-clear "NEW" badges after 8 seconds
-        setTimeout(() => setNewArtworkIds(new Set()), 8000);
+        setTimeout(() => setNewArtworkIds(new Set()), 10_000);
       } else {
         setRefreshStatus('done');
       }
-      showToast();
+      showToast(refreshStatus === 'new' ? 'new' : 'done');
     } catch {
       setRefreshStatus('idle');
     }
-  }, [refreshStatus, forceSyncNow, artworks]);
+  }, [refreshStatus, forceSyncNow, visibleArtworks]);
 
   const ALL_LABEL = 'الكل';
   const categoryLabels = [ALL_LABEL, ...artworkCategories.map((c: any) => c.name)];
 
   const filtered = useMemo(() => {
-    return artworks.filter((a: Artwork) => {
+    return visibleArtworks.filter((a: Artwork) => {
       const matchSearch = !search || a.title.includes(search) || a.description?.includes(search) || a.category?.includes(search);
       const matchCat = catFilter === ALL_LABEL || a.category === catFilter;
       return matchSearch && matchCat;
     });
-  }, [artworks, search, catFilter]);
+  }, [visibleArtworks, search, catFilter]);
 
   const toastMessage =
     refreshStatus === 'new' ? 'تم إضافة أعمال جديدة ✦' :
