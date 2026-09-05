@@ -8,7 +8,6 @@ import { AppProvider } from '@/contexts/AppContext';
 import { VisitorProvider } from '@/contexts/VisitorContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { AdminLoginScreen } from '@/components/feature/AdminLoginScreen';
 import { Colors } from '@/constants/theme';
 
 // ─── Inner layout: consumes AuthContext ───────────────────────────────────
@@ -23,12 +22,9 @@ function AppShell() {
     );
   }
 
-  if (appMode === 'unauthenticated') {
-    return <AdminLoginScreen />;
-  }
-
-  if (appMode === 'client') {
-    // Guest / Visitor mode — artworks gallery only with visitor registration
+  // Both unauthenticated and client modes show the guest stack
+  // (visitor login is the dominant start screen; admin accessed via tiny lock icon)
+  if (appMode === 'unauthenticated' || appMode === 'client') {
     return (
       <LanguageProvider>
         <AppProvider>
