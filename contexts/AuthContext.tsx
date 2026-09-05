@@ -7,7 +7,10 @@ import {
   User,
   sendPasswordResetEmail,
 } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, ADMIN_EMAIL } from '@/services/firebase';
+
+const CLIENT_MODE_KEY = 'app_client_mode_v1';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export type AppMode = 'loading' | 'admin' | 'client' | 'unauthenticated';
@@ -36,19 +39,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+    // On mount: check if visitor was previously in client mode
+    AsyncStorage.getItem(CLIENT_MODE_KEY).then(val => {
+      if (val === 'true') {
+        // Restore client mode before Firebase auth resolves
+        setAppMode('client');
+      }
+    }).catch(() => {});
+
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        // Logged in user — check if admin
+        // Logged-in Firebase user
         if (firebaseUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+          // Clear client-mode flag when admin logs in
+          await AsyncStorage.removeItem(CLIENT_MODE_KEY).catch(() => {});
           setAppMode('admin');
         } else {
-          // Non-admin firebase user → client mode
           setAppMode('client');
         }
       } else {
-        // No firebase session — keep current mode if client, else unauthenticated
-        setAppMode(prev => (prev === 'client' ? 'client' : 'unauthenticated'));
+        // No Firebase session — check persistent client-mode flag
+        const clientFlag = await AsyncStorage.getItem(CLIENT_MODE_KEY).catch(() => null);
+        if (clientFlag === 'true') {
+          setAppMode('client');
+        } else {
+          setAppMode(prev => (prev === 'client' ? 'client' : 'unauthenticated'));
+        }
       }
     });
     return () => unsub();
@@ -80,12 +97,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     try {
+      // Clear client-mode flag so they see the login screen after signing out
+      await AsyncStorage.removeItem(CLIENT_MODE_KEY).catch(() => {});
       await firebaseSignOut(auth);
       setAppMode('unauthenticated');
-    } catch {}
+    } catch {
+      await AsyncStorage.removeItem(CLIENT_MODE_KEY).catch(() => {});
+      setAppMode('unauthenticated');
+    }
   }
 
   function enterClientMode() {
+    AsyncStorage.setItem(CLIENT_MODE_KEY, 'true').catch(() => {});
     setAppMode('client');
   }
 
