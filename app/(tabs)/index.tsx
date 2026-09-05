@@ -93,8 +93,8 @@ export default function HomeScreen() {
             </Pressable>
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.greeting}>{t('welcome')}</Text>
-            <Text style={styles.subtitle}>{t('dashboard')}</Text>
+            <Text style={styles.greeting}>S.Ezzat Art</Text>
+            <Text style={styles.subtitle}>{isAdmin ? 'لوحة الإدارة' : 'Fine Art Gallery'}</Text>
           </View>
         </View>
 
