@@ -172,14 +172,13 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
       const raw = await AsyncStorage.getItem(SESSION_KEY);
       if (raw) {
         const session = JSON.parse(raw);
-        // Refresh from Firestore to get latest data
-        const fresh = await fetchOnce(COLLECTIONS.visitors);
-        const freshVisitor = fresh.find((v: any) => v.id === session.id);
-        if (freshVisitor && mounted.current) {
-          setCurrentVisitor(freshVisitor as Visitor);
-        } else if (mounted.current) {
-          setCurrentVisitor(session);
-        }
+        if (mounted.current) setCurrentVisitor(session as Visitor);
+        // Try to refresh from Firestore (best-effort, don't fail)
+        try {
+          const fresh = await fetchOnce(COLLECTIONS.visitors);
+          const freshVisitor = fresh.find((v: any) => v.id === session.id);
+          if (freshVisitor && mounted.current) setCurrentVisitor(freshVisitor as Visitor);
+        } catch {}
       }
     } catch {}
     if (mounted.current) setIsLoadingVisitor(false);
@@ -187,23 +186,40 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
 
   const registerVisitor = useCallback(async (name: string, phone: string): Promise<Visitor> => {
     const now = new Date().toISOString();
-    // Check if phone already registered
-    const existing = await fetchOnce(COLLECTIONS.visitors);
-    const existingVisitor = existing.find((v: any) => v.phone === phone.trim());
-
     let visitor: Visitor;
-    if (existingVisitor) {
-      // Returning visitor — update visit info
-      visitor = {
-        ...existingVisitor,
-        name: name.trim(),
-        lastVisitDate: now,
-        totalVisits: (existingVisitor.totalVisits || 1) + 1,
-        sessionStartedAt: now,
-        updatedAt: now,
-      } as Visitor;
-    } else {
-      // New visitor
+
+    // Try to find existing visitor by phone (best-effort, don't fail if Firestore unreachable)
+    try {
+      const existing = await fetchOnce(COLLECTIONS.visitors);
+      const existingVisitor = existing.find((v: any) => v.phone === phone.trim());
+      if (existingVisitor) {
+        // Returning visitor — update visit info
+        visitor = {
+          ...existingVisitor,
+          name: name.trim(),
+          lastVisitDate: now,
+          totalVisits: (existingVisitor.totalVisits || 1) + 1,
+          sessionStartedAt: now,
+          updatedAt: now,
+        } as Visitor;
+      } else {
+        visitor = {
+          id: uid(),
+          name: name.trim(),
+          phone: phone.trim(),
+          firstVisitDate: now,
+          lastVisitDate: now,
+          totalVisits: 1,
+          artworkViews: [],
+          totalArtworkViews: 0,
+          lastArtworkViewed: '',
+          sessionStartedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+    } catch {
+      // Firestore unreachable (permissions / offline) — create new local visitor
       visitor = {
         id: uid(),
         name: name.trim(),
@@ -220,9 +236,13 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    await upsertDocSilent(COLLECTIONS.visitors, visitor.id, visitor);
+    // Save to AsyncStorage first (always works)
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(visitor));
     if (mounted.current) setCurrentVisitor(visitor);
+
+    // Try to save to Firestore silently (won't block or throw)
+    upsertDocSilent(COLLECTIONS.visitors, visitor.id, visitor).catch(() => {});
+
     return visitor;
   }, []);
 
@@ -256,8 +276,8 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
     };
 
     setCurrentVisitor(updated);
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updated));
-    await upsertDocSilent(COLLECTIONS.visitors, updated.id, updated);
+    AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updated)).catch(() => {});
+    upsertDocSilent(COLLECTIONS.visitors, updated.id, updated).catch(() => {});
   }, [currentVisitor]);
 
   const refreshVisitors = useCallback(async () => {

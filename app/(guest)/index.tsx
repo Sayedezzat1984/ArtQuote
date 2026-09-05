@@ -1,7 +1,8 @@
 // Powered by OnSpace.AI — Guest Gallery
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Dimensions,
+  ActivityIndicator, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,12 +19,67 @@ const CARD_GAP = 12;
 const COLS = isTablet ? 3 : 2;
 const CARD_W = (SCREEN_W - (COLS + 1) * CARD_GAP * (isTablet ? 1.5 : 1.2)) / COLS;
 
+type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
+
 export default function GuestGalleryScreen() {
-  const { artworks, artworkCategories } = useApp() as any;
+  const { artworks, artworkCategories, forceSyncNow } = useApp() as any;
   const { signOut } = useAuth();
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
+
+  // Refresh state
+  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
+  const [newArtworkIds, setNewArtworkIds] = useState<Set<string>>(new Set());
+  const knownIdsRef = useRef<Set<string>>(new Set(artworks.map((a: Artwork) => a.id)));
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track known artwork IDs on first load (not counting as "new")
+  useEffect(() => {
+    knownIdsRef.current = new Set(artworks.map((a: Artwork) => a.id));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
+  function showToast() {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.delay(2200),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+    toastTimer.current = setTimeout(() => setRefreshStatus('idle'), 3000);
+  }
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshStatus === 'refreshing') return;
+    setRefreshStatus('refreshing');
+    try {
+      const prevIds = new Set(knownIdsRef.current);
+      await forceSyncNow();
+      // After sync, artworks state is updated by AppContext listener
+      // Give a brief moment for state to settle
+      await new Promise(res => setTimeout(res, 400));
+      // Detect new artworks
+      const currentIds = new Set<string>(artworks.map((a: Artwork) => a.id));
+      const addedIds = new Set<string>();
+      currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
+
+      knownIdsRef.current = currentIds;
+
+      if (addedIds.size > 0) {
+        setNewArtworkIds(addedIds);
+        setRefreshStatus('new');
+        // Auto-clear "NEW" badges after 8 seconds
+        setTimeout(() => setNewArtworkIds(new Set()), 8000);
+      } else {
+        setRefreshStatus('done');
+      }
+      showToast();
+    } catch {
+      setRefreshStatus('idle');
+    }
+  }, [refreshStatus, forceSyncNow, artworks]);
 
   const ALL_LABEL = 'الكل';
   const categoryLabels = [ALL_LABEL, ...artworkCategories.map((c: any) => c.name)];
@@ -35,6 +91,10 @@ export default function GuestGalleryScreen() {
       return matchSearch && matchCat;
     });
   }, [artworks, search, catFilter]);
+
+  const toastMessage =
+    refreshStatus === 'new' ? 'تم إضافة أعمال جديدة ✦' :
+    refreshStatus === 'done' ? 'تم تحديث المعرض' : '';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -48,11 +108,36 @@ export default function GuestGalleryScreen() {
           <Text style={styles.title}>سيد عزت</Text>
           <Text style={styles.subtitle}>معرض الأعمال الفنية</Text>
         </View>
-        <View style={styles.headerBadge}>
-          <MaterialIcons name="visibility" size={14} color={Colors.info} />
-          <Text style={styles.headerBadgeText}>زائر</Text>
-        </View>
+        {/* Refresh Button */}
+        <Pressable
+          onPress={handleRefresh}
+          disabled={refreshStatus === 'refreshing'}
+          style={({ pressed }) => [
+            styles.refreshBtn,
+            pressed && { opacity: 0.8 },
+            refreshStatus === 'refreshing' && styles.refreshBtnActive,
+          ]}
+          accessibilityLabel="تحديث الأعمال"
+        >
+          {refreshStatus === 'refreshing' ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <MaterialIcons
+              name="refresh"
+              size={20}
+              color={refreshStatus === 'new' ? Colors.success : Colors.primary}
+            />
+          )}
+        </Pressable>
       </View>
+
+      {/* Refreshing status bar */}
+      {refreshStatus === 'refreshing' ? (
+        <View style={styles.statusBar}>
+          <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />
+          <Text style={styles.statusBarText}>جاري تحديث الأعمال...</Text>
+        </View>
+      ) : null}
 
       {/* Divider line */}
       <View style={styles.headerDivider} />
@@ -146,6 +231,12 @@ export default function GuestGalleryScreen() {
                   <Text style={styles.catBadgeText} numberOfLines={1}>{item.category}</Text>
                 </View>
               ) : null}
+              {/* NEW badge */}
+              {newArtworkIds.has(item.id) ? (
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>جديد</Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Name */}
@@ -156,6 +247,20 @@ export default function GuestGalleryScreen() {
           </Pressable>
         )}
       />
+
+      {/* Toast notification */}
+      {toastMessage ? (
+        <Animated.View style={[styles.toast, { opacity: toastOpacity }, refreshStatus === 'new' && styles.toastNew]}>
+          <MaterialIcons
+            name={refreshStatus === 'new' ? 'fiber-new' : 'check-circle'}
+            size={16}
+            color={refreshStatus === 'new' ? Colors.success : Colors.primary}
+          />
+          <Text style={[styles.toastText, refreshStatus === 'new' && { color: Colors.success }]}>
+            {toastMessage}
+          </Text>
+        </Animated.View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -191,19 +296,41 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   subtitle: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 1 },
-  headerBadge: {
+
+  // Refresh button
+  refreshBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primarySurface,
+    borderWidth: 1,
+    borderColor: Colors.primary + '50',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshBtnActive: {
+    backgroundColor: Colors.surfaceElevated,
+    borderColor: Colors.border,
+  },
+
+  // Status bar (while refreshing)
+  statusBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.infoSurface,
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: Colors.info + '40',
+    justifyContent: 'center',
+    backgroundColor: Colors.primarySurface,
+    paddingVertical: 7,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.primary + '30',
   },
-  headerBadgeText: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.semibold },
-  headerDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: 0 },
+  statusBarText: {
+    fontSize: FontSize.xs,
+    color: Colors.primary,
+    fontWeight: FontWeight.semibold,
+  },
+
+  headerDivider: { height: 1, backgroundColor: Colors.border },
 
   // Search
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
@@ -282,6 +409,26 @@ const styles = StyleSheet.create({
     maxWidth: CARD_W - 16,
   },
   catBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.semibold },
+
+  // NEW badge
+  newBadge: {
+    position: 'absolute',
+    top: 7,
+    left: 7,
+    backgroundColor: Colors.success,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  newBadgeText: {
+    fontSize: 9,
+    color: '#fff',
+    fontWeight: FontWeight.extrabold,
+    letterSpacing: 0.5,
+  },
+
   cardBody: { padding: 10, paddingTop: 8 },
   cardTitle: {
     fontSize: isTablet ? FontSize.base : FontSize.sm,
@@ -296,4 +443,30 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 80 },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: 16 },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 6, textAlign: 'center' },
+
+  // Toast
+  toast: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.full,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.primary + '50',
+    ...Shadow.md,
+  },
+  toastNew: {
+    borderColor: Colors.success + '70',
+    backgroundColor: Colors.successSurface,
+  },
+  toastText: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semibold,
+    color: Colors.primary,
+  },
 });
