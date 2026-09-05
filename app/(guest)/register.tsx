@@ -333,10 +333,10 @@ export default function VisitorStartScreen() {
         <Pressable
           onPress={() => setShowAdminModal(true)}
           style={styles.adminLockBtn}
-          hitSlop={12}
+          hitSlop={16}
           accessibilityLabel="admin"
         >
-          <MaterialIcons name="lock" size={14} color={Colors.textMuted + '80'} />
+          <MaterialIcons name="lock" size={16} color={Colors.textMuted} />
         </Pressable>
 
         <ScrollView
@@ -524,12 +524,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 14,
     left: 14,
-    zIndex: 10,
-    width: 28,
-    height: 28,
+    zIndex: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    // No background, no border, no shadow — completely invisible to most users
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
 
   scroll: {
