@@ -414,6 +414,12 @@ export interface Quote {
   validUntil: string;
 }
 
+// ─── App Settings ──────────────────────────────────────────────────────────
+export interface AppSettings {
+  whatsappNumber: string;
+  [key: string]: any;
+}
+
 // ─── Context type ──────────────────────────────────────────────────────────
 interface AppContextType {
   artworks: Artwork[];
@@ -424,6 +430,7 @@ interface AppContextType {
   syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
   pendingOpsCount: number;
   isOnline: boolean;
+  appSettings: AppSettings;
   artworkCategories: ArtworkCategory[];
   suppliers: Supplier[];
   fullMaterials: FullMaterial[];
@@ -471,6 +478,7 @@ interface AppContextType {
   addExternalManufacturing: (m: Omit<ExternalManufacturing, 'id' | 'createdAt'>) => Promise<void>;
   updateExternalManufacturing: (id: string, m: Partial<ExternalManufacturing>) => Promise<void>;
   deleteExternalManufacturing: (id: string) => Promise<void>;
+  updateAppSettings: (s: Partial<AppSettings>) => Promise<void>;
   restoreBackup: (data: Record<string, any[]>) => Promise<void>;
   migrateLocalToFirestore: () => Promise<{ migrated: number; skipped: number }>;
   forceSyncNow: () => Promise<void>;
@@ -519,6 +527,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline' | 'error'>('idle');
   const [pendingOpsCount, setPendingOpsCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
+  const [appSettings, setAppSettings] = useState<AppSettings>({ whatsappNumber: '' });
 
   const unsubsRef = useRef<(() => void)[]>([]);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -551,12 +560,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     setSyncStatus('syncing');
 
-    // Load local cache first for instant display
+    // Load local cache first (including settings)
     loadFromLocal().then(() => {
       if (mounted) setLoading(false);
     });
 
-    // Subscribe to all Firestore collections in parallel
     const subs: (() => void)[] = [];
 
     const setupListener = (col: string, setter: (d: any[]) => void) => {
@@ -582,16 +590,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     subs.push(setupListener(COLLECTIONS.internalManufacturing, setInternalManufacturing));
     subs.push(setupListener(COLLECTIONS.externalManufacturing, setExternalManufacturing));
 
+    // App settings listener
+    subs.push(listenCollection('appSettings', d => {
+      if (!mounted) return;
+      if (d.length > 0) {
+        const merged: AppSettings = { whatsappNumber: '' };
+        d.forEach((item: any) => { Object.assign(merged, item); });
+        setAppSettings(merged);
+      }
+    }, () => {}));
+
     // Categories with default seed — ONLY if Firestore has zero categories
     subs.push(listenCollection(COLLECTIONS.categories, d => {
       if (!mounted) return;
       if (d.length > 0) {
-        // Firestore has existing categories — use them as-is, never overwrite
         setArtworkCategories(d as ArtworkCategory[]);
       } else {
-        // No categories in Firestore at all — seed defaults once
         setArtworkCategories(DEFAULT_CATEGORIES);
-        // Only write if absolutely empty (prevents overwriting on reconnect)
         fetchOnce(COLLECTIONS.categories).then(existing => {
           if (existing.length === 0) {
             DEFAULT_CATEGORIES.forEach(c => upsertDocSilent(COLLECTIONS.categories, c.id, c));
@@ -605,12 +620,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     unsubsRef.current = subs;
 
-    // Mark loaded after timeout
     loadingTimer.current = setTimeout(() => {
       if (mounted) setLoading(false);
     }, 2000);
 
-    // Flush any pending ops
     flushQueue().then(() => refreshPendingCount());
 
     return () => {
@@ -640,6 +653,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setInternalManufacturing(prev => prev.length ? prev : intm);
       setExternalManufacturing(prev => prev.length ? prev : extm);
       setArtworkCategories(prev => prev.length ? prev : (cats.length > 0 ? cats : DEFAULT_CATEGORIES));
+      // Load settings from AsyncStorage
+      try {
+        const raw = await AsyncStorage.getItem('appSettings');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setAppSettings(prev => ({ whatsappNumber: '', ...prev, ...parsed }));
+        }
+      } catch {}
     } catch {}
   }
 
@@ -705,6 +726,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (getIsOnline()) setSyncStatus('syncing');
     else setSyncStatus('offline');
   }
+
+  // ─── App Settings ──────────────────────────────────────────────────────────
+  const updateAppSettings = useCallback(async (s: Partial<AppSettings>) => {
+    const updated = { ...appSettings, ...s };
+    setAppSettings(updated);
+    await upsertDocSilent('appSettings', 'main', { ...updated, id: 'main' });
+    try {
+      await AsyncStorage.setItem('appSettings', JSON.stringify(updated));
+    } catch {}
+  }, [appSettings]);
 
   // ─── Artwork CRUD ──────────────────────────────────────────────────────────
   const addArtwork = useCallback(async (artwork: Omit<Artwork, 'id' | 'createdAt'>) => {
@@ -1045,7 +1076,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       artworks, customers, quotes, materials, loading, syncStatus,
-      pendingOpsCount, isOnline,
+      pendingOpsCount, isOnline, appSettings,
       artworkCategories, suppliers, fullMaterials, artworkCosts,
       workers, productionOrders, internalManufacturing, externalManufacturing,
       addArtwork, updateArtwork, deleteArtwork,
@@ -1060,7 +1091,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProductionOrder, updateProductionOrder, deleteProductionOrder, getOrdersByArtwork,
       addInternalManufacturing, updateInternalManufacturing, deleteInternalManufacturing,
       addExternalManufacturing, updateExternalManufacturing, deleteExternalManufacturing,
-      restoreBackup, migrateLocalToFirestore, forceSyncNow,
+      updateAppSettings, restoreBackup, migrateLocalToFirestore, forceSyncNow,
     }}>
       {children}
     </AppContext.Provider>

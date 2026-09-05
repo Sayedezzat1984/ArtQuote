@@ -26,7 +26,20 @@ function AppShell() {
     return <AdminLoginScreen />;
   }
 
-  // appMode === 'admin' or 'client' — show the full app
+  if (appMode === 'client') {
+    // Guest / Visitor mode — artworks gallery only
+    return (
+      <LanguageProvider>
+        <AppProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(guest)" />
+          </Stack>
+        </AppProvider>
+      </LanguageProvider>
+    );
+  }
+
+  // appMode === 'admin' — full app
   return (
     <LanguageProvider>
       <AppProvider>
