@@ -37,7 +37,7 @@ export default function VisitorRegisterScreen() {
       // After registration, verify access from server
       const allowed = await checkAccessEnabled(visitor.id);
       if (allowed) {
-        router.replace('/(guest)/');
+        router.replace('/(guest)/welcome');
       } else {
         setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
       }
@@ -56,7 +56,7 @@ export default function VisitorRegisterScreen() {
     // Verify access status from server before redirecting
     checkAccessEnabled(currentVisitor.id).then(allowed => {
       if (allowed) {
-        router.replace('/(guest)/');
+        router.replace('/(guest)/welcome');
       } else {
         // Blocked visitor — clear session so they can re-register with different info
         setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
