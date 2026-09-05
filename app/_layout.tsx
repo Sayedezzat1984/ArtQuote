@@ -8,7 +8,7 @@ import { AppProvider } from '@/contexts/AppContext';
 import { VisitorProvider } from '@/contexts/VisitorContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { AdminLoginScreen } from '@/components/feature/AdminLoginScreen';
+import { GuestEntryScreen } from '@/components/feature/GuestEntryScreen';
 import { Colors } from '@/constants/theme';
 
 // ─── Inner layout: consumes AuthContext ───────────────────────────────────
@@ -24,7 +24,7 @@ function AppShell() {
   }
 
   if (appMode === 'unauthenticated') {
-    return <AdminLoginScreen />;
+    return <GuestEntryScreen />;
   }
 
   if (appMode === 'client') {

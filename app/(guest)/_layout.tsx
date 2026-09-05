@@ -15,11 +15,11 @@ function GuestGuard({ children }: { children: React.ReactNode }) {
     if (isLoadingVisitor) return;
     const inRegister = segments.includes('register' as any);
     const inWelcome  = segments.includes('welcome' as any);
-    const inGallery  = segments.includes('index' as any) || (!inRegister && !inWelcome);
+    // If not registered and not on register screen → go to register (fallback)
     if (!isRegistered && !inRegister) {
       router.replace('/(guest)/register');
     } else if (isRegistered && inRegister) {
-      // After registration → welcome screen
+      // Skip legacy register screen if already registered → welcome
       router.replace('/(guest)/welcome');
     }
     // welcome and gallery: no forced redirect — user navigates freely
