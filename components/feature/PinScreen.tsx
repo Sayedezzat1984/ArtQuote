@@ -53,8 +53,9 @@ export function PinScreen({ onSuccess }: PinScreenProps) {
               <MaterialIcons name="palette" size={40} color={Colors.primary} />
             </View>
           </View>
-          <Text style={styles.brandName}>S.Ezzat Art</Text>
-          <Text style={styles.brandSub}>Fine Art Gallery</Text>
+          <Text style={styles.brandName}>Sayed Ezzat</Text>
+          <Text style={styles.brandAr}>سيد عزت</Text>
+          <Text style={styles.brandSub}>فنان تشكيلي · Visual Artist</Text>
         </View>
 
         {/* Prompt */}
