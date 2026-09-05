@@ -8,6 +8,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useApp } from '@/hooks/useApp';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useVisitor } from '@/contexts/VisitorContext';
 import { BackupModal } from '@/components/feature/BackupModal';
 import { QuoteDetailModal } from '@/components/feature/QuoteDetailModal';
 import { MigrationModal } from '@/components/feature/MigrationModal';
@@ -18,6 +19,7 @@ export default function HomeScreen() {
   const { artworks, customers, quotes, fullMaterials, suppliers, artworkCosts, appSettings, updateAppSettings, syncStatus, pendingOpsCount, isOnline, forceSyncNow } = useApp() as any;
   const { t, currency, lang, toggleLang } = useLanguage();
   const { isAdmin, signOut, appMode } = useAuth();
+  const { analytics: visitorAnalytics } = useVisitor();
   const router = useRouter();
   const [showBackup, setShowBackup] = useState(false);
   const [showMigration, setShowMigration] = useState(false);
@@ -281,6 +283,61 @@ export default function HomeScreen() {
             ) : null}
           </>
         )}
+        {/* Visitor Analytics — Admin only */}
+        {isAdmin && visitorAnalytics.totalVisitors > 0 ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Pressable onPress={() => router.push('/(tabs)/visitors' as any)} style={styles.seeAllBtn}>
+                <Text style={styles.seeAll}>عرض الكل</Text>
+              </Pressable>
+              <Text style={styles.sectionTitle}>إحصائيات الزوار</Text>
+            </View>
+            <View style={styles.visitorGrid}>
+              <View style={[styles.visitorCard, { borderColor: Colors.primary + '40' }]}>
+                <View style={[styles.visitorIcon, { backgroundColor: Colors.primarySurface }]}>
+                  <MaterialIcons name="groups" size={18} color={Colors.primary} />
+                </View>
+                <Text style={[styles.visitorVal, { color: Colors.primary }]}>{visitorAnalytics.totalVisitors}</Text>
+                <Text style={styles.visitorLbl}>إجمالي الزوار</Text>
+              </View>
+              <View style={styles.visitorCard}>
+                <View style={[styles.visitorIcon, { backgroundColor: Colors.infoSurface }]}>
+                  <MaterialIcons name="today" size={18} color={Colors.info} />
+                </View>
+                <Text style={[styles.visitorVal, { color: Colors.info }]}>{visitorAnalytics.visitorsToday}</Text>
+                <Text style={styles.visitorLbl}>اليوم</Text>
+              </View>
+              <View style={styles.visitorCard}>
+                <View style={[styles.visitorIcon, { backgroundColor: Colors.successSurface }]}>
+                  <MaterialIcons name="visibility" size={18} color={Colors.success} />
+                </View>
+                <Text style={[styles.visitorVal, { color: Colors.success }]}>{visitorAnalytics.totalArtworkViews}</Text>
+                <Text style={styles.visitorLbl}>مشاهدات</Text>
+              </View>
+              <View style={styles.visitorCard}>
+                <View style={[styles.visitorIcon, { backgroundColor: Colors.warningSurface }]}>
+                  <MaterialIcons name="replay" size={18} color={Colors.warning} />
+                </View>
+                <Text style={[styles.visitorVal, { color: Colors.warning }]}>{visitorAnalytics.returningVisitors}</Text>
+                <Text style={styles.visitorLbl}>عائدون</Text>
+              </View>
+            </View>
+            {visitorAnalytics.mostViewedArtwork ? (
+              <Pressable onPress={() => router.push('/(tabs)/visitors' as any)} style={styles.topArtworkBanner}>
+                <View style={styles.topArtworkLeft}>
+                  <Text style={styles.topArtworkVal}>{visitorAnalytics.mostViewedArtwork.totalViews}</Text>
+                  <Text style={styles.topArtworkSub}>مشاهدة</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <Text style={styles.topArtworkLabel}>الأكثر مشاهدةً</Text>
+                  <Text style={styles.topArtworkName} numberOfLines={1}>{visitorAnalytics.mostViewedArtwork.artworkTitle}</Text>
+                </View>
+                <MaterialIcons name="trending-up" size={22} color={Colors.primary} />
+              </Pressable>
+            ) : null}
+          </>
+        ) : null}
+
         {/* WhatsApp Settings — Admin only */}
         {isAdmin ? (
           <>
@@ -426,4 +483,17 @@ const styles = StyleSheet.create({
   waFieldLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.sm },
   waInput: { backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, padding: Spacing.md, fontSize: FontSize.base, color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
   waActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.md, borderRadius: Radius.md },
+  // Visitor analytics
+  seeAllBtn: { paddingHorizontal: Spacing.sm },
+  visitorGrid: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md, flexWrap: 'wrap' },
+  visitorCard: { flex: 1, minWidth: '20%', backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  visitorIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
+  visitorVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  visitorLbl: { fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
+  topArtworkBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.primarySurface, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.primary + '40' },
+  topArtworkLeft: { alignItems: 'center', backgroundColor: Colors.primary + '15', borderRadius: Radius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md },
+  topArtworkVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  topArtworkSub: { fontSize: 9, color: Colors.primary },
+  topArtworkLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.medium },
+  topArtworkName: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right' },
 });

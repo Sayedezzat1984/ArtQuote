@@ -68,6 +68,8 @@ export const COLLECTIONS = {
   packaging: 'packaging',
   transport: 'transport',
   catalog: 'catalog',
+  visitors: 'visitors',
+  artworkViews: 'artworkViews',
 } as const;
 
 export const ADMIN_EMAIL = 'engsayedezzat@gmail.com';
