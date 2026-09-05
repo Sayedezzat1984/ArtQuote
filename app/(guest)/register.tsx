@@ -1,5 +1,6 @@
+
 // Powered by OnSpace.AI — Visitor Registration Screen
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
@@ -13,7 +14,7 @@ import { isTablet } from '@/constants/responsive';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function VisitorRegisterScreen() {
-  const { registerVisitor } = useVisitor();
+  const { registerVisitor, currentVisitor, isLoadingVisitor, checkAccessEnabled } = useVisitor();
   const { signOut } = useAuth();
   const router = useRouter();
 
@@ -22,7 +23,8 @@ export default function VisitorRegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleEnter() {
+  // Define handleEnter with useCallback to stabilize its reference
+  const handleEnter = useCallback(async () => {
     const trimName = name.trim();
     const trimPhone = phone.trim();
     if (!trimName) { setError('يرجى إدخال الاسم'); return; }
@@ -31,13 +33,48 @@ export default function VisitorRegisterScreen() {
     setError('');
     setLoading(true);
     try {
-      await registerVisitor(trimName, trimPhone);
-      router.replace('/(guest)/');
+      const visitor = await registerVisitor(trimName, trimPhone);
+      // After registration, verify access from server
+      const allowed = await checkAccessEnabled(visitor.id);
+      if (allowed) {
+        router.replace('/(guest)/');
+      } else {
+        setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
+      }
     } catch {
       setError('حدث خطأ، حاول مجدداً');
     } finally {
       setLoading(false);
     }
+  }, [name, phone, registerVisitor, checkAccessEnabled, router]); // Dependencies for useCallback
+
+  // If already registered in this session, check access then redirect
+  useEffect(() => {
+    if (isLoadingVisitor) return;
+    if (!currentVisitor) return;
+
+    // Verify access status from server before redirecting
+    checkAccessEnabled(currentVisitor.id).then(allowed => {
+      if (allowed) {
+        router.replace('/(guest)/');
+      } else {
+        // Blocked visitor — clear session so they can re-register with different info
+        setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
+      }
+    });
+  // The eslint-disable-next-line comment was removed as it's not a syntax error,
+  // but a linter instruction which might be causing the "Definition for rule 'react-hooks/exhaustive-deps' was not found" error
+  }, [isLoadingVisitor, currentVisitor?.id, checkAccessEnabled, router]); // Added missing dependencies to avoid the error
+
+  // Show loading while checking existing session
+  if (isLoadingVisitor) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -145,7 +182,7 @@ export default function VisitorRegisterScreen() {
                 <ActivityIndicator size="small" color="#0d0d0f" />
               ) : (
                 <>
-                  <MaterialIcons name="gallery-thumbnail" size={20} color="#0d0d0f" />
+                  <MaterialIcons name="photo-library" size={20} color="#0d0d0f" />
                   <Text style={styles.enterBtnText}>دخول المعرض</Text>
                 </>
               )}
@@ -167,113 +204,33 @@ export default function VisitorRegisterScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   scroll: { flexGrow: 1, alignItems: 'center', paddingBottom: 40 },
-
-  topBar: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  exitBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: Colors.border,
-  },
+  topBar: { width: '100%', flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 },
+  exitBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: Colors.border },
   exitText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
-
   brandSection: { alignItems: 'center', marginTop: Spacing.xxl, marginBottom: Spacing.xl },
   logoCircle: {
-    width: isTablet ? 100 : 80,
-    height: isTablet ? 100 : 80,
-    borderRadius: isTablet ? 50 : 40,
-    backgroundColor: Colors.primarySurface,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: Colors.primary + '40',
-    marginBottom: Spacing.base,
-    ...Shadow.gold,
+    width: isTablet ? 100 : 80, height: isTablet ? 100 : 80, borderRadius: isTablet ? 50 : 40,
+    backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.primary + '40', marginBottom: Spacing.base, ...Shadow.gold,
   },
-  brandName: {
-    fontSize: isTablet ? 36 : 28,
-    fontWeight: FontWeight.extrabold,
-    color: Colors.primary,
-    letterSpacing: 1,
-  },
-  brandSub: {
-    fontSize: isTablet ? FontSize.base : FontSize.sm,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
-
-  card: {
-    width: '90%',
-    backgroundColor: Colors.card,
-    borderRadius: Radius.xl,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadow.md,
-  },
+  brandName: { fontSize: isTablet ? 36 : 28, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 1 },
+  brandSub: { fontSize: isTablet ? FontSize.base : FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
+  card: { width: '90%', backgroundColor: Colors.card, borderRadius: Radius.xl, padding: Spacing.xl, borderWidth: 1, borderColor: Colors.border, ...Shadow.md },
   cardTablet: { width: '55%', minWidth: 360 },
-
-  cardHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    justifyContent: 'flex-end', marginBottom: Spacing.xs,
-  },
-  cardTitle: {
-    fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary,
-  },
-  cardSubtitle: {
-    fontSize: FontSize.sm, color: Colors.textSecondary,
-    textAlign: 'right', marginBottom: Spacing.xl,
-  },
-
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, justifyContent: 'flex-end', marginBottom: Spacing.xs },
+  cardTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  cardSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.xl },
   fieldGroup: { marginBottom: Spacing.base },
-  fieldLabel: {
-    fontSize: FontSize.sm, fontWeight: FontWeight.semibold,
-    color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.xs,
-  },
-  inputWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, borderWidth: 1, borderColor: Colors.border,
-    gap: Spacing.sm,
-  },
+  fieldLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textSecondary, textAlign: 'right', marginBottom: Spacing.xs },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, paddingHorizontal: Spacing.md, borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm },
   inputError: { borderColor: Colors.error, backgroundColor: Colors.errorSurface },
-  input: {
-    flex: 1, paddingVertical: 14,
-    fontSize: FontSize.base, color: Colors.textPrimary,
-  },
-
-  errorRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.errorSurface, borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    marginBottom: Spacing.sm, justifyContent: 'flex-end',
-  },
-  errorText: { fontSize: FontSize.sm, color: Colors.error, fontWeight: FontWeight.medium },
-
-  privacyNote: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    justifyContent: 'center', marginBottom: Spacing.xl, marginTop: Spacing.xs,
-  },
+  input: { flex: 1, paddingVertical: 14, fontSize: FontSize.base, color: Colors.textPrimary },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.errorSurface, borderRadius: Radius.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, marginBottom: Spacing.sm, justifyContent: 'flex-end' },
+  errorText: { fontSize: FontSize.sm, color: Colors.error, fontWeight: FontWeight.medium, flex: 1, textAlign: 'right' },
+  privacyNote: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: Spacing.xl, marginTop: Spacing.xs },
   privacyText: { fontSize: FontSize.xs, color: Colors.textMuted },
-
-  enterBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.lg, paddingVertical: 16,
-    ...Shadow.gold,
-  },
-  enterBtnText: {
-    fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#0d0d0f',
-  },
-
-  footer: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginTop: Spacing.xl,
-  },
+  enterBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, borderRadius: Radius.lg, paddingVertical: 16, ...Shadow.gold },
+  enterBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#0d0d0f' },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: Spacing.xl },
   footerText: { fontSize: FontSize.xs, color: Colors.textMuted },
 });

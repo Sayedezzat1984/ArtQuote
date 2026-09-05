@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/hooks/useApp';
 import { useAuth } from '@/contexts/AuthContext';
+import { useVisitor } from '@/contexts/VisitorContext';
 import { Artwork } from '@/contexts/AppContext';
 import { isTablet } from '@/constants/responsive';
 
@@ -27,9 +28,11 @@ type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
 export default function GuestGalleryScreen() {
   const { artworks, artworkCategories, forceSyncNow } = useApp() as any;
   const { signOut } = useAuth();
+  const { currentVisitor, checkAccessEnabled, clearSession } = useVisitor();
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('الكل');
+  const [isBlocked, setIsBlocked] = useState(false);
 
   // Refresh state
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
@@ -40,7 +43,27 @@ export default function GuestGalleryScreen() {
   const autoSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncing = useRef(false);
 
-  // Filter: only show artworks that are visible to visitors (default true for backward compat)
+  // ── Access check on mount and on return from background ─────────────────────
+  useEffect(() => {
+    if (!currentVisitor) return;
+    checkAccessEnabled(currentVisitor.id).then(allowed => {
+      setIsBlocked(!allowed);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVisitor?.id]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (state: AppStateStatus) => {
+      if (state === 'active' && currentVisitor) {
+        const allowed = await checkAccessEnabled(currentVisitor.id);
+        setIsBlocked(!allowed);
+      }
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVisitor?.id]);
+
+  // ── Filter: only show artworks that are visible to visitors (default true for backward compat)
   const visibleArtworks = useMemo(() => {
     return artworks.filter((a: Artwork) => (a as any).visibleToVisitors !== false);
   }, [artworks]);
@@ -158,6 +181,26 @@ export default function GuestGalleryScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Blocked Visitor Screen */}
+      {isBlocked ? (
+        <View style={styles.blockedContainer}>
+          <View style={styles.blockedIcon}>
+            <MaterialIcons name="block" size={56} color={Colors.error} />
+          </View>
+          <Text style={styles.blockedTitle}>وصولك محدود</Text>
+          <Text style={styles.blockedMsg}>
+            {'وصولك للمعرض غير متاح حالياً.\nيرجى التواصل معنا للمزيد من المعلومات.'}
+          </Text>
+          <Pressable onPress={async () => { await clearSession(); signOut(); }} style={styles.blockedExitBtn}>
+            <MaterialIcons name="exit-to-app" size={18} color={Colors.textSecondary} />
+            <Text style={styles.blockedExitText}>خروج</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* Main Gallery (shown when not blocked) */}
+      {!isBlocked ? (
+        <>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={signOut} style={styles.backBtn}>
@@ -321,6 +364,7 @@ export default function GuestGalleryScreen() {
           </Text>
         </Animated.View>
       ) : null}
+      </> ) : null}
     </SafeAreaView>
   );
 }
@@ -528,5 +572,56 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semibold,
     color: Colors.primary,
+  },
+
+  // Blocked visitor
+  blockedContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    zIndex: 100,
+  },
+  blockedIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: Colors.errorSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xl,
+    borderWidth: 2,
+    borderColor: Colors.error + '40',
+  },
+  blockedTitle: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  blockedMsg: {
+    fontSize: FontSize.base,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 26,
+    marginBottom: Spacing.xxl,
+  },
+  blockedExitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  blockedExitText: {
+    fontSize: FontSize.base,
+    color: Colors.textSecondary,
+    fontWeight: FontWeight.semibold,
   },
 });

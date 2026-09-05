@@ -1,8 +1,8 @@
-// Powered by OnSpace.AI — Admin Visitors Screen
-import React, { useState, useMemo } from 'react';
+// Powered by OnSpace.AI — Admin Visitor Management
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
-  Modal, ScrollView, ActivityIndicator,
+  Modal, ScrollView, ActivityIndicator, Switch, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -10,8 +10,8 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useVisitor, Visitor, ArtworkViewRecord } from '@/contexts/VisitorContext';
 import { isTablet, pagePadding } from '@/constants/responsive';
 
-type FilterKey = 'all' | 'today' | 'week' | 'month';
-type SortKey = 'recent' | 'active' | 'views';
+type FilterKey = 'all' | 'today' | 'week' | 'month' | 'blocked';
+type SortKey = 'recent' | 'active' | 'views' | 'blocked';
 
 function isSameDay(dateStr: string, ref: Date) {
   const d = new Date(dateStr);
@@ -28,19 +28,33 @@ function isThisMonth(dateStr: string, now: Date) {
   const d = new Date(dateStr);
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
-
 function formatDate(dateStr: string) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+function shortDate(dateStr: string) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 // ─── Visitor Detail Modal ─────────────────────────────────────────────────────
-function VisitorDetailModal({ visitor, visible, onClose }: {
-  visitor: Visitor | null; visible: boolean; onClose: () => void;
+function VisitorDetailModal({
+  visitor, visible, onClose, onToggleAccess, onDelete, onClearActivity,
+}: {
+  visitor: Visitor | null;
+  visible: boolean;
+  onClose: () => void;
+  onToggleAccess: (enabled: boolean) => void;
+  onDelete: () => void;
+  onClearActivity: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   if (!visitor) return null;
   const sortedViews = [...(visitor.artworkViews || [])].sort((a, b) => b.viewCount - a.viewCount);
+  const isBlocked = visitor.accessEnabled === false;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -54,9 +68,9 @@ function VisitorDetailModal({ visitor, visible, onClose }: {
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={dm.content}>
-            {/* Avatar */}
+            {/* Avatar + Status */}
             <View style={dm.avatarSection}>
-              <View style={dm.avatar}>
+              <View style={[dm.avatar, isBlocked && dm.avatarBlocked]}>
                 <Text style={dm.avatarText}>{visitor.name?.[0] || 'ز'}</Text>
               </View>
               <Text style={dm.visitorName}>{visitor.name}</Text>
@@ -64,21 +78,60 @@ function VisitorDetailModal({ visitor, visible, onClose }: {
                 <MaterialIcons name="phone" size={14} color={Colors.textMuted} />
                 <Text style={dm.phoneText}>{visitor.phone}</Text>
               </View>
+              <View style={[dm.statusPill, isBlocked ? dm.statusBlocked : dm.statusActive]}>
+                <MaterialIcons
+                  name={isBlocked ? 'block' : 'check-circle'}
+                  size={13}
+                  color={isBlocked ? Colors.error : Colors.success}
+                />
+                <Text style={[dm.statusText, { color: isBlocked ? Colors.error : Colors.success }]}>
+                  {isBlocked ? 'محظور' : 'نشط'}
+                </Text>
+              </View>
+              <Text style={dm.visitorId}>ID: {visitor.id}</Text>
             </View>
 
             {/* Stats Grid */}
             <View style={dm.statsGrid}>
               <View style={dm.statBox}>
                 <Text style={dm.statVal}>{visitor.totalVisits}</Text>
-                <Text style={dm.statLbl}>عدد الزيارات</Text>
+                <Text style={dm.statLbl}>الزيارات</Text>
               </View>
               <View style={dm.statBox}>
                 <Text style={dm.statVal}>{visitor.totalArtworkViews || 0}</Text>
-                <Text style={dm.statLbl}>إجمالي المشاهدات</Text>
+                <Text style={dm.statLbl}>المشاهدات</Text>
               </View>
               <View style={dm.statBox}>
-                <Text style={dm.statVal}>{(visitor.artworkViews || []).length}</Text>
+                <Text style={dm.statVal}>{sortedViews.length}</Text>
                 <Text style={dm.statLbl}>أعمال مختلفة</Text>
+              </View>
+            </View>
+
+            {/* Access Control */}
+            <View style={dm.section}>
+              <Text style={dm.sectionTitle}>التحكم في الوصول</Text>
+              <View style={[dm.accessRow, isBlocked ? dm.accessRowBlocked : dm.accessRowActive]}>
+                <Switch
+                  value={!isBlocked}
+                  onValueChange={(val) => onToggleAccess(val)}
+                  trackColor={{ false: Colors.error + '60', true: Colors.success + '60' }}
+                  thumbColor={isBlocked ? Colors.error : Colors.success}
+                />
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <Text style={[dm.accessLabel, { color: isBlocked ? Colors.error : Colors.success }]}>
+                    {isBlocked ? 'الوصول محظور' : 'الوصول مسموح'}
+                  </Text>
+                  <Text style={dm.accessSub}>
+                    {isBlocked
+                      ? 'لن يتمكن هذا الزائر من دخول المعرض'
+                      : 'يمكن لهذا الزائر دخول المعرض بحرية'}
+                  </Text>
+                </View>
+                <MaterialIcons
+                  name={isBlocked ? 'lock' : 'lock-open'}
+                  size={22}
+                  color={isBlocked ? Colors.error : Colors.success}
+                />
               </View>
             </View>
 
@@ -93,9 +146,13 @@ function VisitorDetailModal({ visitor, visible, onClose }: {
                 <Text style={dm.infoVal}>{formatDate(visitor.lastVisitDate)}</Text>
                 <Text style={dm.infoLbl}>آخر زيارة</Text>
               </View>
+              <View style={dm.infoRow}>
+                <Text style={dm.infoVal}>{formatDate(visitor.createdAt)}</Text>
+                <Text style={dm.infoLbl}>تاريخ التسجيل</Text>
+              </View>
               {visitor.lastArtworkViewed ? (
                 <View style={dm.infoRow}>
-                  <Text style={[dm.infoVal, { color: Colors.primary }]}>{visitor.lastArtworkViewed}</Text>
+                  <Text style={[dm.infoVal, { color: Colors.primary }]} numberOfLines={1}>{visitor.lastArtworkViewed}</Text>
                   <Text style={dm.infoLbl}>آخر عمل مشاهَد</Text>
                 </View>
               ) : null}
@@ -104,11 +161,20 @@ function VisitorDetailModal({ visitor, visible, onClose }: {
             {/* Artwork Views */}
             {sortedViews.length > 0 ? (
               <View style={dm.section}>
-                <Text style={dm.sectionTitle}>الأعمال المشاهَدة ({sortedViews.length})</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
+                  <Pressable
+                    onPress={() => setConfirmClear(true)}
+                    style={dm.clearActivityBtn}
+                  >
+                    <MaterialIcons name="clear-all" size={14} color={Colors.warning} />
+                    <Text style={dm.clearActivityText}>مسح النشاط</Text>
+                  </Pressable>
+                  <Text style={dm.sectionTitle}>الأعمال المشاهَدة ({sortedViews.length})</Text>
+                </View>
                 {sortedViews.map((av: ArtworkViewRecord, i) => (
                   <View key={av.artworkId + i} style={dm.artworkRow}>
                     <View style={dm.artworkBadge}>
-                      <Text style={dm.artworkBadgeText}>{av.viewCount}x</Text>
+                      <Text style={dm.artworkBadgeText}>{av.viewCount}×</Text>
                     </View>
                     <View style={dm.artworkInfo}>
                       <Text style={dm.artworkName}>{av.artworkTitle}</Text>
@@ -123,72 +189,185 @@ function VisitorDetailModal({ visitor, visible, onClose }: {
                 <Text style={dm.emptyViewsText}>لم يشاهد أعمالاً بعد</Text>
               </View>
             )}
+
+            {/* Delete Section */}
+            <View style={dm.dangerSection}>
+              <Pressable
+                onPress={() => setConfirmDelete(true)}
+                style={dm.deleteBtn}
+              >
+                <MaterialIcons name="delete-forever" size={18} color={Colors.error} />
+                <Text style={dm.deleteBtnText}>حذف سجل الزائر نهائياً</Text>
+              </Pressable>
+            </View>
           </ScrollView>
         </View>
       </View>
+
+      {/* Confirm Delete Dialog */}
+      <Modal visible={confirmDelete} transparent animationType="fade" onRequestClose={() => setConfirmDelete(false)}>
+        <View style={dm.confirmOverlay}>
+          <View style={dm.confirmBox}>
+            <MaterialIcons name="warning" size={36} color={Colors.error} />
+            <Text style={dm.confirmTitle}>حذف سجل الزائر؟</Text>
+            <Text style={dm.confirmMsg}>
+              سيتم حذف جميع بيانات الزائر <Text style={{ fontWeight: '700', color: Colors.textPrimary }}>{visitor.name}</Text> نهائياً.
+              {'\n'}لن تتأثر الأعمال الفنية أو بيانات التطبيق الأخرى.
+            </Text>
+            <View style={dm.confirmBtns}>
+              <Pressable onPress={() => setConfirmDelete(false)} style={dm.confirmCancelBtn}>
+                <Text style={dm.confirmCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable onPress={() => { setConfirmDelete(false); onDelete(); }} style={dm.confirmDeleteBtn}>
+                <Text style={dm.confirmDeleteText}>حذف نهائياً</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm Clear Activity Dialog */}
+      <Modal visible={confirmClear} transparent animationType="fade" onRequestClose={() => setConfirmClear(false)}>
+        <View style={dm.confirmOverlay}>
+          <View style={dm.confirmBox}>
+            <MaterialIcons name="clear-all" size={36} color={Colors.warning} />
+            <Text style={dm.confirmTitle}>مسح سجل النشاط؟</Text>
+            <Text style={dm.confirmMsg}>
+              سيتم مسح تاريخ مشاهدة الأعمال لـ <Text style={{ fontWeight: '700', color: Colors.textPrimary }}>{visitor.name}</Text>.
+              {'\n'}سيبقى سجل الزائر وبياناته الأساسية.
+            </Text>
+            <View style={dm.confirmBtns}>
+              <Pressable onPress={() => setConfirmClear(false)} style={dm.confirmCancelBtn}>
+                <Text style={dm.confirmCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable onPress={() => { setConfirmClear(false); onClearActivity(); }} style={[dm.confirmDeleteBtn, { backgroundColor: Colors.warningSurface, borderColor: Colors.warning + '50' }]}>
+                <Text style={[dm.confirmDeleteText, { color: Colors.warning }]}>مسح النشاط</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
 const dm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  container: { backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xxl, borderTopRightRadius: Radius.xxl, maxHeight: '92%' },
+  container: { backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xxl, borderTopRightRadius: Radius.xxl, maxHeight: '94%' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border },
   headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: Spacing.base, paddingBottom: 40 },
+  content: { padding: Spacing.base, paddingBottom: 50 },
   avatarSection: { alignItems: 'center', marginBottom: Spacing.xl },
-  avatar: { width: 68, height: 68, borderRadius: 34, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.primary + '50', marginBottom: Spacing.md },
+  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.primary + '50', marginBottom: Spacing.md },
+  avatarBlocked: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '50' },
   avatarText: { fontSize: FontSize.xxxl, fontWeight: FontWeight.bold, color: Colors.primary },
   visitorName: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginBottom: 4 },
-  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: Spacing.sm },
   phoneText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: Spacing.md, paddingVertical: 5, borderWidth: 1, marginBottom: Spacing.xs },
+  statusActive: { backgroundColor: Colors.successSurface, borderColor: Colors.success + '50' },
+  statusBlocked: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '50' },
+  statusText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
+  visitorId: { fontSize: 10, color: Colors.textMuted, marginTop: 4 },
   statsGrid: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.xl },
   statBox: { flex: 1, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
   statVal: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.primary },
   statLbl: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
   section: { marginBottom: Spacing.xl },
-  sectionTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.md, borderRightWidth: 3, borderRightColor: Colors.primary, paddingRight: Spacing.sm },
+  sectionTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', borderRightWidth: 3, borderRightColor: Colors.primary, paddingRight: Spacing.sm },
+  accessRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.base, borderWidth: 1, marginTop: Spacing.md },
+  accessRowActive: { backgroundColor: Colors.successSurface, borderColor: Colors.success + '40' },
+  accessRowBlocked: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '40' },
+  accessLabel: { fontSize: FontSize.base, fontWeight: FontWeight.bold },
+  accessSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textAlign: 'right' },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
   infoLbl: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
-  infoVal: { fontSize: FontSize.sm, color: Colors.textPrimary },
+  infoVal: { fontSize: FontSize.sm, color: Colors.textPrimary, flex: 1, textAlign: 'left', marginLeft: Spacing.sm },
   artworkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  artworkBadge: { backgroundColor: Colors.primarySurface, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.primary + '50' },
+  artworkBadge: { backgroundColor: Colors.primarySurface, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.primary + '50', minWidth: 44, alignItems: 'center' },
   artworkBadgeText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.bold },
   artworkInfo: { flex: 1, alignItems: 'flex-end' },
-  artworkName: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: FontWeight.semibold },
+  artworkName: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: FontWeight.semibold, textAlign: 'right' },
   artworkDate: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
   emptyViews: { alignItems: 'center', padding: Spacing.xl },
   emptyViewsText: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: Spacing.sm },
+  clearActivityBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.warningSurface, borderRadius: Radius.full, paddingHorizontal: Spacing.md, paddingVertical: 6, borderWidth: 1, borderColor: Colors.warning + '50' },
+  clearActivityText: { fontSize: FontSize.xs, color: Colors.warning, fontWeight: FontWeight.semibold },
+  dangerSection: { borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.xl, marginTop: Spacing.sm },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.errorSurface, borderRadius: Radius.lg, padding: Spacing.base, borderWidth: 1, borderColor: Colors.error + '40' },
+  deleteBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.error },
+  // Confirm dialogs
+  confirmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  confirmBox: { backgroundColor: Colors.surface, borderRadius: Radius.xl, padding: Spacing.xl, alignItems: 'center', width: '100%', maxWidth: 360, ...Shadow.md },
+  confirmTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: Spacing.md, marginBottom: Spacing.sm },
+  confirmMsg: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.xl },
+  confirmBtns: { flexDirection: 'row', gap: Spacing.md, width: '100%' },
+  confirmCancelBtn: { flex: 1, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  confirmCancelText: { fontSize: FontSize.base, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
+  confirmDeleteBtn: { flex: 2, backgroundColor: Colors.errorSurface, borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.error + '50' },
+  confirmDeleteText: { fontSize: FontSize.base, color: Colors.error, fontWeight: FontWeight.bold },
 });
 
 // ─── Visitor Card ─────────────────────────────────────────────────────────────
-function VisitorCard({ visitor, onPress }: { visitor: Visitor; onPress: () => void }) {
+function VisitorCard({
+  visitor, onPress, onToggleAccess,
+}: {
+  visitor: Visitor;
+  onPress: () => void;
+  onToggleAccess: (enabled: boolean) => void;
+}) {
+  const isBlocked = visitor.accessEnabled === false;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [vc.card, pressed && { opacity: 0.88 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [vc.card, isBlocked && vc.cardBlocked, pressed && { opacity: 0.88 }]}>
       <View style={vc.top}>
-        <View style={vc.avatar}>
+        <View style={[vc.avatar, isBlocked && vc.avatarBlocked]}>
           <Text style={vc.avatarText}>{visitor.name?.[0] || 'ز'}</Text>
         </View>
         <View style={vc.info}>
-          <Text style={vc.name} numberOfLines={1}>{visitor.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+            <Text style={vc.name} numberOfLines={1}>{visitor.name}</Text>
+            {isBlocked ? (
+              <View style={vc.blockedPill}>
+                <MaterialIcons name="block" size={10} color={Colors.error} />
+                <Text style={vc.blockedText}>محظور</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={vc.phone}>{visitor.phone}</Text>
-          <Text style={vc.date}>{formatDate(visitor.lastVisitDate)}</Text>
+          <Text style={vc.date}>{shortDate(visitor.lastVisitDate)}</Text>
         </View>
-        <View style={vc.badges}>
-          <View style={vc.badge}>
-            <Text style={vc.badgeVal}>{visitor.totalVisits}</Text>
-            <Text style={vc.badgeLbl}>زيارة</Text>
+        <View style={vc.right}>
+          <View style={vc.badges}>
+            <View style={vc.badge}>
+              <Text style={vc.badgeVal}>{visitor.totalVisits}</Text>
+              <Text style={vc.badgeLbl}>زيارة</Text>
+            </View>
+            <View style={[vc.badge, { backgroundColor: Colors.primarySurface, borderColor: Colors.primary + '40' }]}>
+              <Text style={[vc.badgeVal, { color: Colors.primary }]}>{visitor.totalArtworkViews || 0}</Text>
+              <Text style={vc.badgeLbl}>مشاهدة</Text>
+            </View>
           </View>
-          <View style={[vc.badge, { backgroundColor: Colors.primarySurface, borderColor: Colors.primary + '40' }]}>
-            <Text style={[vc.badgeVal, { color: Colors.primary }]}>{visitor.totalArtworkViews || 0}</Text>
-            <Text style={vc.badgeLbl}>مشاهدة</Text>
-          </View>
+          {/* Quick Access Toggle */}
+          <Pressable
+            onPress={(e) => { e.stopPropagation?.(); onToggleAccess(!isBlocked); }}
+            style={[vc.toggleBtn, isBlocked ? vc.toggleBtnBlocked : vc.toggleBtnActive]}
+            hitSlop={8}
+          >
+            <MaterialIcons
+              name={isBlocked ? 'lock' : 'lock-open'}
+              size={13}
+              color={isBlocked ? Colors.error : Colors.success}
+            />
+            <Text style={[vc.toggleText, { color: isBlocked ? Colors.error : Colors.success }]}>
+              {isBlocked ? 'محظور' : 'نشط'}
+            </Text>
+          </Pressable>
         </View>
       </View>
       {visitor.lastArtworkViewed ? (
         <View style={vc.lastArtwork}>
-          <MaterialIcons name="visibility" size={12} color={Colors.textMuted} />
+          <MaterialIcons name="visibility" size={11} color={Colors.textMuted} />
           <Text style={vc.lastArtworkText} numberOfLines={1}>{visitor.lastArtworkViewed}</Text>
         </View>
       ) : null}
@@ -198,24 +377,33 @@ function VisitorCard({ visitor, onPress }: { visitor: Visitor; onPress: () => vo
 
 const vc = StyleSheet.create({
   card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.base, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.border, ...Shadow.sm },
+  cardBlocked: { borderColor: Colors.error + '40', backgroundColor: Colors.errorSurface + '30' },
   top: { flexDirection: 'row', gap: Spacing.md, alignItems: 'center' },
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.primary + '50' },
+  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.primary + '50' },
+  avatarBlocked: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '50' },
   avatarText: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.primary },
   info: { flex: 1, alignItems: 'flex-end' },
-  name: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  name: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   phone: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
-  date: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  date: { fontSize: 10, color: Colors.textMuted, marginTop: 1 },
+  blockedPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.errorSurface, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: Colors.error + '40' },
+  blockedText: { fontSize: 9, color: Colors.error, fontWeight: FontWeight.bold },
+  right: { alignItems: 'flex-end', gap: Spacing.xs },
   badges: { flexDirection: 'row', gap: Spacing.xs },
-  badge: { backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 4, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
-  badgeVal: { fontSize: FontSize.base, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  badge: { backgroundColor: Colors.surfaceElevated, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 3, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  badgeVal: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
   badgeLbl: { fontSize: 9, color: Colors.textMuted },
+  toggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1 },
+  toggleBtnActive: { backgroundColor: Colors.successSurface, borderColor: Colors.success + '50' },
+  toggleBtnBlocked: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '50' },
+  toggleText: { fontSize: 10, fontWeight: FontWeight.bold },
   lastArtwork: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
   lastArtworkText: { fontSize: FontSize.xs, color: Colors.textMuted, flex: 1, textAlign: 'right' },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function VisitorsScreen() {
-  const { visitors, analytics, refreshVisitors } = useVisitor();
+  const { visitors, analytics, refreshVisitors, updateVisitorAccess, deleteVisitor, clearVisitorActivity } = useVisitor();
   const [search, setSearch] = useState('');
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
   const [sortKey, setSortKey] = useState<SortKey>('recent');
@@ -231,6 +419,7 @@ export default function VisitorsScreen() {
         || v.phone.includes(search);
       const matchFilter =
         filterKey === 'all' ? true
+        : filterKey === 'blocked' ? v.accessEnabled === false
         : filterKey === 'today' ? isSameDay(v.lastVisitDate, now)
         : filterKey === 'week' ? isThisWeek(v.lastVisitDate, now)
         : isThisMonth(v.lastVisitDate, now);
@@ -241,6 +430,7 @@ export default function VisitorsScreen() {
       case 'recent': result = [...result].sort((a, b) => b.lastVisitDate.localeCompare(a.lastVisitDate)); break;
       case 'active': result = [...result].sort((a, b) => b.totalVisits - a.totalVisits); break;
       case 'views': result = [...result].sort((a, b) => (b.totalArtworkViews || 0) - (a.totalArtworkViews || 0)); break;
+      case 'blocked': result = [...result].sort((a, b) => (a.accessEnabled === false ? -1 : 1) - (b.accessEnabled === false ? -1 : 1)); break;
     }
     return result;
   }, [visitors, search, filterKey, sortKey]);
@@ -251,17 +441,37 @@ export default function VisitorsScreen() {
     setRefreshing(false);
   }
 
-  const FILTERS: { key: FilterKey; label: string }[] = [
+  const handleToggleAccess = useCallback((visitorId: string, enabled: boolean) => {
+    updateVisitorAccess(visitorId, enabled);
+    // Update detail view if open
+    setDetailVisitor(prev => prev?.id === visitorId ? { ...prev, accessEnabled: enabled } : prev);
+  }, [updateVisitorAccess]);
+
+  const handleDelete = useCallback((visitor: Visitor) => {
+    deleteVisitor(visitor.id);
+    setDetailVisitor(null);
+  }, [deleteVisitor]);
+
+  const handleClearActivity = useCallback((visitor: Visitor) => {
+    clearVisitorActivity(visitor.id);
+    setDetailVisitor(prev => prev?.id === visitor.id
+      ? { ...prev, artworkViews: [], totalArtworkViews: 0, lastArtworkViewed: '' }
+      : prev);
+  }, [clearVisitorActivity]);
+
+  const FILTERS: { key: FilterKey; label: string; icon?: string }[] = [
     { key: 'all', label: 'الكل' },
     { key: 'today', label: 'اليوم' },
     { key: 'week', label: 'هذا الأسبوع' },
     { key: 'month', label: 'هذا الشهر' },
+    { key: 'blocked', label: 'المحظورون' },
   ];
 
   const SORTS: { key: SortKey; label: string }[] = [
     { key: 'recent', label: 'الأحدث' },
     { key: 'active', label: 'الأكثر نشاطاً' },
     { key: 'views', label: 'أعلى مشاهدات' },
+    { key: 'blocked', label: 'المحظورون أولاً' },
   ];
 
   return (
@@ -273,18 +483,17 @@ export default function VisitorsScreen() {
             ? <ActivityIndicator size="small" color={Colors.primary} />
             : <MaterialIcons name="refresh" size={20} color={Colors.textSecondary} />}
         </Pressable>
-        <Text style={styles.title}>الزوار</Text>
+        <Text style={styles.title}>إدارة الزوار</Text>
       </View>
 
-      {/* Analytics Cards */}
+      {/* Analytics Strip */}
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
+        horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.analyticsRow}
       >
         <View style={[styles.anaCard, { borderColor: Colors.primary + '40' }]}>
           <Text style={[styles.anaVal, { color: Colors.primary }]}>{analytics.totalVisitors}</Text>
-          <Text style={styles.anaLbl}>إجمالي الزوار</Text>
+          <Text style={styles.anaLbl}>الكل</Text>
         </View>
         <View style={styles.anaCard}>
           <Text style={styles.anaVal}>{analytics.visitorsToday}</Text>
@@ -292,44 +501,45 @@ export default function VisitorsScreen() {
         </View>
         <View style={styles.anaCard}>
           <Text style={styles.anaVal}>{analytics.visitorsThisWeek}</Text>
-          <Text style={styles.anaLbl}>هذا الأسبوع</Text>
+          <Text style={styles.anaLbl}>الأسبوع</Text>
         </View>
         <View style={styles.anaCard}>
           <Text style={styles.anaVal}>{analytics.visitorsThisMonth}</Text>
-          <Text style={styles.anaLbl}>هذا الشهر</Text>
+          <Text style={styles.anaLbl}>الشهر</Text>
         </View>
         <View style={[styles.anaCard, { borderColor: Colors.success + '40' }]}>
           <Text style={[styles.anaVal, { color: Colors.success }]}>{analytics.returningVisitors}</Text>
-          <Text style={styles.anaLbl}>زوار عائدون</Text>
+          <Text style={styles.anaLbl}>عائدون</Text>
         </View>
         <View style={[styles.anaCard, { borderColor: Colors.info + '40' }]}>
           <Text style={[styles.anaVal, { color: Colors.info }]}>{analytics.totalArtworkViews}</Text>
-          <Text style={styles.anaLbl}>إجمالي المشاهدات</Text>
+          <Text style={styles.anaLbl}>المشاهدات</Text>
         </View>
-        <View style={styles.anaCard}>
-          <Text style={styles.anaVal}>{analytics.avgArtworksPerVisitor}</Text>
-          <Text style={styles.anaLbl}>متوسط/زائر</Text>
-        </View>
+        {(analytics as any).blockedVisitors > 0 ? (
+          <View style={[styles.anaCard, { borderColor: Colors.error + '40' }]}>
+            <Text style={[styles.anaVal, { color: Colors.error }]}>{(analytics as any).blockedVisitors}</Text>
+            <Text style={styles.anaLbl}>محظور</Text>
+          </View>
+        ) : null}
       </ScrollView>
 
-      {/* Most / Least Viewed */}
-      {(analytics.mostViewedArtwork || analytics.leastViewedArtwork) ? (
+      {/* Most/Least Viewed */}
+      {analytics.mostViewedArtwork ? (
         <View style={styles.topArtworksRow}>
-          {analytics.mostViewedArtwork ? (
-            <View style={[styles.topArtworkCard, { borderColor: Colors.primary + '40' }]}>
-              <View style={styles.topArtworkIcon}><MaterialIcons name="trending-up" size={14} color={Colors.primary} /></View>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.topArtworkTitle} numberOfLines={1}>{analytics.mostViewedArtwork.artworkTitle}</Text>
-                <Text style={styles.topArtworkSub}>{analytics.mostViewedArtwork.totalViews} مشاهدة · الأكثر مشاهدةً</Text>
-              </View>
+          <View style={[styles.topCard, { borderColor: Colors.primary + '40' }]}>
+            <MaterialIcons name="trending-up" size={14} color={Colors.primary} />
+            <View style={{ flex: 1, alignItems: 'flex-end' }}>
+              <Text style={styles.topCardTitle} numberOfLines={1}>{analytics.mostViewedArtwork.artworkTitle}</Text>
+              <Text style={styles.topCardSub}>{analytics.mostViewedArtwork.totalViews} مشاهدة · الأكثر</Text>
             </View>
-          ) : null}
-          {analytics.leastViewedArtwork && analytics.leastViewedArtwork.artworkId !== analytics.mostViewedArtwork?.artworkId ? (
-            <View style={[styles.topArtworkCard, { borderColor: Colors.textMuted + '40' }]}>
-              <View style={[styles.topArtworkIcon, { backgroundColor: Colors.surfaceElevated }]}><MaterialIcons name="trending-down" size={14} color={Colors.textMuted} /></View>
+          </View>
+          {analytics.leastViewedArtwork &&
+           analytics.leastViewedArtwork.artworkId !== analytics.mostViewedArtwork.artworkId ? (
+            <View style={[styles.topCard, { borderColor: Colors.textMuted + '30' }]}>
+              <MaterialIcons name="trending-down" size={14} color={Colors.textMuted} />
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.topArtworkTitle} numberOfLines={1}>{analytics.leastViewedArtwork.artworkTitle}</Text>
-                <Text style={styles.topArtworkSub}>{analytics.leastViewedArtwork.totalViews} مشاهدة · الأقل مشاهدةً</Text>
+                <Text style={styles.topCardTitle} numberOfLines={1}>{analytics.leastViewedArtwork.artworkTitle}</Text>
+                <Text style={styles.topCardSub}>{analytics.leastViewedArtwork.totalViews} مشاهدة · الأقل</Text>
               </View>
             </View>
           ) : null}
@@ -341,7 +551,7 @@ export default function VisitorsScreen() {
         <View style={styles.searchBar}>
           <TextInput
             value={search} onChangeText={setSearch}
-            placeholder="ابحث باسم الزائر أو رقم الهاتف..."
+            placeholder="ابحث بالاسم أو رقم الهاتف..."
             placeholderTextColor={Colors.textMuted}
             style={styles.searchInput} textAlign="right"
           />
@@ -360,9 +570,18 @@ export default function VisitorsScreen() {
           renderItem={({ item }) => (
             <Pressable
               onPress={() => setFilterKey(item.key)}
-              style={[styles.chip, filterKey === item.key && styles.chipActive]}
+              style={[
+                styles.chip,
+                filterKey === item.key && styles.chipActive,
+                item.key === 'blocked' && filterKey === 'blocked' && styles.chipBlocked,
+              ]}
             >
-              <Text style={[styles.chipText, filterKey === item.key && styles.chipTextActive]}>{item.label}</Text>
+              {item.key === 'blocked' ? <MaterialIcons name="block" size={11} color={filterKey === 'blocked' ? Colors.error : Colors.textMuted} /> : null}
+              <Text style={[
+                styles.chipText,
+                filterKey === item.key && styles.chipTextActive,
+                item.key === 'blocked' && filterKey === 'blocked' && { color: Colors.error },
+              ]}>{item.label}</Text>
             </Pressable>
           )}
         />
@@ -391,7 +610,7 @@ export default function VisitorsScreen() {
         <Text style={styles.countText}>{filtered.length} زائر</Text>
       </View>
 
-      {/* List */}
+      {/* Visitor List */}
       <FlatList
         data={filtered}
         keyExtractor={v => v.id}
@@ -411,7 +630,11 @@ export default function VisitorsScreen() {
         }
         renderItem={({ item }) => (
           <View style={isTablet ? { flex: 1 } : undefined}>
-            <VisitorCard visitor={item} onPress={() => setDetailVisitor(item)} />
+            <VisitorCard
+              visitor={item}
+              onPress={() => setDetailVisitor(item)}
+              onToggleAccess={(enabled) => handleToggleAccess(item.id, enabled)}
+            />
           </View>
         )}
       />
@@ -420,6 +643,9 @@ export default function VisitorsScreen() {
         visitor={detailVisitor}
         visible={detailVisitor !== null}
         onClose={() => setDetailVisitor(null)}
+        onToggleAccess={(enabled) => detailVisitor && handleToggleAccess(detailVisitor.id, enabled)}
+        onDelete={() => detailVisitor && handleDelete(detailVisitor)}
+        onClearActivity={() => detailVisitor && handleClearActivity(detailVisitor)}
       />
     </SafeAreaView>
   );
@@ -434,40 +660,32 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: isTablet ? FontSize.xxl : FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   refreshBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
-
   analyticsRow: { paddingHorizontal: pagePadding, paddingVertical: Spacing.md, gap: Spacing.sm },
-  anaCard: { backgroundColor: Colors.card, borderRadius: Radius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border, minWidth: 70 },
+  anaCard: { backgroundColor: Colors.card, borderRadius: Radius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border, minWidth: 64 },
   anaVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
   anaLbl: { fontSize: 10, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
-
-  topArtworksRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: pagePadding, marginBottom: Spacing.sm },
-  topArtworkCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1 },
-  topArtworkIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.primarySurface, alignItems: 'center', justifyContent: 'center' },
-  topArtworkTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
-  topArtworkSub: { fontSize: 10, color: Colors.textMuted, marginTop: 1 },
-
-  searchWrap: { paddingHorizontal: pagePadding, paddingBottom: Spacing.xs },
+  topArtworksRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: pagePadding, marginBottom: Spacing.xs },
+  topCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1 },
+  topCardTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
+  topCardSub: { fontSize: 10, color: Colors.textMuted, marginTop: 1 },
+  searchWrap: { paddingHorizontal: pagePadding, paddingBottom: Spacing.xs, paddingTop: Spacing.xs },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, paddingHorizontal: Spacing.md, borderWidth: 1, borderColor: Colors.border },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: FontSize.base, color: Colors.textPrimary, marginLeft: Spacing.sm },
-
   filterOuter: { height: 42 },
   filterContent: { paddingHorizontal: pagePadding, gap: Spacing.sm, alignItems: 'center' },
-  chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border },
   chipActive: { backgroundColor: Colors.primarySurface, borderColor: Colors.primary },
+  chipBlocked: { backgroundColor: Colors.errorSurface, borderColor: Colors.error + '50' },
   chipText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   chipTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
-
   sortOuter: { height: 38 },
   sortChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 12, paddingVertical: 5, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border },
   sortChipActive: { borderColor: Colors.primary },
   sortChipText: { fontSize: FontSize.xs, color: Colors.textMuted },
   sortChipTextActive: { color: Colors.primary, fontWeight: FontWeight.semibold },
-
   countRow: { paddingHorizontal: pagePadding, paddingBottom: 4, paddingTop: 2 },
   countText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right' },
-
   list: { padding: pagePadding, paddingTop: Spacing.sm },
-
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: Spacing.base },
   emptySub: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 6, textAlign: 'center', paddingHorizontal: 20 },

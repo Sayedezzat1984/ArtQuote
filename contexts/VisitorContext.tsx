@@ -5,7 +5,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  upsertDocSilent, listenCollection, fetchOnce, uid,
+  upsertDocSilent, listenCollection, fetchOnce, uid, removeDoc,
 } from '@/services/firestoreService';
 import { COLLECTIONS } from '@/services/firebase';
 
@@ -30,6 +30,7 @@ export interface Visitor {
   totalArtworkViews: number;
   lastArtworkViewed: string;
   sessionStartedAt: string;
+  accessEnabled: boolean;   // true = allowed, false = blocked
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +47,7 @@ export interface VisitorAnalytics {
   totalVisitors: number;
   totalVisits: number;
   returningVisitors: number;
+  blockedVisitors: number;
   totalArtworkViews: number;
   avgArtworksPerVisitor: number;
   mostViewedArtwork: ArtworkStats | null;
@@ -66,6 +68,10 @@ interface VisitorContextType {
   trackArtworkView: (artworkId: string, artworkTitle: string) => Promise<void>;
   refreshVisitors: () => Promise<void>;
   clearSession: () => Promise<void>;
+  updateVisitorAccess: (visitorId: string, enabled: boolean) => Promise<void>;
+  deleteVisitor: (visitorId: string) => Promise<void>;
+  clearVisitorActivity: (visitorId: string) => Promise<void>;
+  checkAccessEnabled: (visitorId: string) => Promise<boolean>;
 }
 
 const VisitorContext = createContext<VisitorContextType | undefined>(undefined);
@@ -97,12 +103,14 @@ function computeAnalytics(visitors: Visitor[]): VisitorAnalytics {
 
   let totalArtworkViews = 0;
   let returningVisitors = 0;
+  let blockedVisitors = 0;
   let visitorsToday = 0;
   let visitorsThisWeek = 0;
   let visitorsThisMonth = 0;
 
   for (const v of visitors) {
     if (v.totalVisits > 1) returningVisitors++;
+    if (v.accessEnabled === false) blockedVisitors++;
     if (isSameDay(v.lastVisitDate, now)) visitorsToday++;
     if (isThisWeek(v.lastVisitDate, now)) visitorsThisWeek++;
     if (isThisMonth(v.lastVisitDate, now)) visitorsThisMonth++;
@@ -138,6 +146,7 @@ function computeAnalytics(visitors: Visitor[]): VisitorAnalytics {
     totalVisitors: visitors.length,
     totalVisits: visitors.reduce((s, v) => s + (v.totalVisits || 1), 0),
     returningVisitors,
+    blockedVisitors,
     totalArtworkViews,
     avgArtworksPerVisitor: visitors.length > 0 ? Math.round((totalArtworkViews / visitors.length) * 10) / 10 : 0,
     mostViewedArtwork: artworkStats[0] || null,
@@ -162,7 +171,18 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
     loadSession();
     // Real-time listener for admin analytics
     const unsub = listenCollection(COLLECTIONS.visitors, (data) => {
-      if (mounted.current) setVisitors(data as Visitor[]);
+      if (mounted.current) {
+        setVisitors(data as Visitor[]);
+        // Sync current visitor's accessEnabled from live data
+        setCurrentVisitor(prev => {
+          if (!prev) return prev;
+          const live = (data as Visitor[]).find(v => v.id === prev.id);
+          if (!live) return prev;
+          const merged = { ...prev, accessEnabled: live.accessEnabled };
+          AsyncStorage.setItem(SESSION_KEY, JSON.stringify(merged)).catch(() => {});
+          return merged;
+        });
+      }
     }, () => {});
     return () => { mounted.current = false; unsub(); };
   }, []);
@@ -173,11 +193,15 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const session = JSON.parse(raw);
         if (mounted.current) setCurrentVisitor(session as Visitor);
-        // Try to refresh from Firestore (best-effort, don't fail)
+        // Try to refresh from Firestore — always get latest accessEnabled
         try {
           const fresh = await fetchOnce(COLLECTIONS.visitors);
           const freshVisitor = fresh.find((v: any) => v.id === session.id);
-          if (freshVisitor && mounted.current) setCurrentVisitor(freshVisitor as Visitor);
+          if (freshVisitor && mounted.current) {
+            const merged = { ...session, ...freshVisitor };
+            setCurrentVisitor(merged as Visitor);
+            AsyncStorage.setItem(SESSION_KEY, JSON.stringify(merged)).catch(() => {});
+          }
         } catch {}
       }
     } catch {}
@@ -193,7 +217,7 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
       const existing = await fetchOnce(COLLECTIONS.visitors);
       const existingVisitor = existing.find((v: any) => v.phone === phone.trim());
       if (existingVisitor) {
-        // Returning visitor — update visit info
+        // Returning visitor — update visit info but KEEP accessEnabled from server
         visitor = {
           ...existingVisitor,
           name: name.trim(),
@@ -201,6 +225,7 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
           totalVisits: (existingVisitor.totalVisits || 1) + 1,
           sessionStartedAt: now,
           updatedAt: now,
+          accessEnabled: existingVisitor.accessEnabled !== false, // preserve block status
         } as Visitor;
       } else {
         visitor = {
@@ -214,6 +239,7 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
           totalArtworkViews: 0,
           lastArtworkViewed: '',
           sessionStartedAt: now,
+          accessEnabled: true,
           createdAt: now,
           updatedAt: now,
         };
@@ -231,6 +257,7 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
         totalArtworkViews: 0,
         lastArtworkViewed: '',
         sessionStartedAt: now,
+        accessEnabled: true,
         createdAt: now,
         updatedAt: now,
       };
@@ -281,14 +308,92 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
   }, [currentVisitor]);
 
   const refreshVisitors = useCallback(async () => {
-    const data = await fetchOnce(COLLECTIONS.visitors);
-    if (mounted.current) setVisitors(data as Visitor[]);
+    try {
+      const data = await fetchOnce(COLLECTIONS.visitors);
+      if (mounted.current) setVisitors(data as Visitor[]);
+    } catch {}
   }, []);
 
   const clearSession = useCallback(async () => {
     await AsyncStorage.removeItem(SESSION_KEY);
     if (mounted.current) setCurrentVisitor(null);
   }, []);
+
+  // ─── Access management (Admin only) ─────────────────────────────────────────
+  const updateVisitorAccess = useCallback(async (visitorId: string, enabled: boolean) => {
+    setVisitors(prev => prev.map(v =>
+      v.id === visitorId ? { ...v, accessEnabled: enabled, updatedAt: new Date().toISOString() } : v
+    ));
+    const target = visitors.find(v => v.id === visitorId);
+    if (target) {
+      const updated = { ...target, accessEnabled: enabled, updatedAt: new Date().toISOString() };
+      upsertDocSilent(COLLECTIONS.visitors, visitorId, updated).catch(() => {});
+      // Sync local session if it's the current visitor
+      if (currentVisitor?.id === visitorId) {
+        const updatedSession = { ...currentVisitor, accessEnabled: enabled };
+        setCurrentVisitor(updatedSession);
+        AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updatedSession)).catch(() => {});
+      }
+    }
+  }, [visitors, currentVisitor]);
+
+  const deleteVisitor = useCallback(async (visitorId: string) => {
+    setVisitors(prev => prev.filter(v => v.id !== visitorId));
+    removeDoc(COLLECTIONS.visitors, visitorId).catch(() => {});
+    if (currentVisitor?.id === visitorId) {
+      await AsyncStorage.removeItem(SESSION_KEY);
+      if (mounted.current) setCurrentVisitor(null);
+    }
+  }, [visitors, currentVisitor]);
+
+  const clearVisitorActivity = useCallback(async (visitorId: string) => {
+    const target = visitors.find(v => v.id === visitorId);
+    if (!target) return;
+    const cleared = {
+      ...target,
+      artworkViews: [],
+      totalArtworkViews: 0,
+      lastArtworkViewed: '',
+      updatedAt: new Date().toISOString(),
+    };
+    setVisitors(prev => prev.map(v => v.id === visitorId ? cleared : v));
+    upsertDocSilent(COLLECTIONS.visitors, visitorId, cleared).catch(() => {});
+    if (currentVisitor?.id === visitorId) {
+      setCurrentVisitor(cleared);
+      AsyncStorage.setItem(SESSION_KEY, JSON.stringify(cleared)).catch(() => {});
+    }
+  }, [visitors, currentVisitor]);
+
+  // ─── Live access check from Firestore (always authoritative) ─────────────────
+  const checkAccessEnabled = useCallback(async (visitorId: string): Promise<boolean> => {
+    try {
+      const all = await fetchOnce(COLLECTIONS.visitors);
+      const found = all.find((v: any) => v.id === visitorId);
+      if (!found) return true; // Unknown → allow
+      // Update local state with latest from server
+      if (mounted.current) {
+        setVisitors(prev => {
+          const idx = prev.findIndex(v => v.id === visitorId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = found as Visitor;
+            return next;
+          }
+          return [...prev, found as Visitor];
+        });
+        if (currentVisitor?.id === visitorId) {
+          const merged = { ...currentVisitor, ...(found as Visitor) };
+          setCurrentVisitor(merged);
+          AsyncStorage.setItem(SESSION_KEY, JSON.stringify(merged)).catch(() => {});
+        }
+      }
+      return (found as any).accessEnabled !== false;
+    } catch {
+      // Offline — use local cache; default allow if unknown
+      const local = visitors.find(v => v.id === visitorId);
+      return local ? local.accessEnabled !== false : true;
+    }
+  }, [visitors, currentVisitor]);
 
   const isRegistered = currentVisitor !== null;
   const analytics = computeAnalytics(visitors);
@@ -297,6 +402,7 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
     <VisitorContext.Provider value={{
       currentVisitor, visitors, analytics, isRegistered, isLoadingVisitor,
       registerVisitor, trackArtworkView, refreshVisitors, clearSession,
+      updateVisitorAccess, deleteVisitor, clearVisitorActivity, checkAccessEnabled,
     }}>
       {children}
     </VisitorContext.Provider>
