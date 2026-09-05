@@ -2,7 +2,7 @@
 // Firestore service — wraps all read/write operations for Sayed Gallery
 // Includes offline queue, sync status, and real-time listeners
 import {
-  collection, doc, setDoc, deleteDoc, onSnapshot,
+  collection, doc, setDoc, deleteDoc, onSnapshot, query,
   writeBatch, getDocs,
   Unsubscribe, DocumentData, QuerySnapshot,
 } from 'firebase/firestore';
