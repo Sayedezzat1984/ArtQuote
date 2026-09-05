@@ -454,6 +454,7 @@ export default function VisitorsScreen() {
 
   const handleClearActivity = useCallback((visitor: Visitor) => {
     clearVisitorActivity(visitor.id);
+    // Update detail view immediately
     setDetailVisitor(prev => prev?.id === visitor.id
       ? { ...prev, artworkViews: [], totalArtworkViews: 0, lastArtworkViewed: '' }
       : prev);

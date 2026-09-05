@@ -321,48 +321,55 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
 
   // ─── Access management (Admin only) ─────────────────────────────────────────
   const updateVisitorAccess = useCallback(async (visitorId: string, enabled: boolean) => {
-    setVisitors(prev => prev.map(v =>
-      v.id === visitorId ? { ...v, accessEnabled: enabled, updatedAt: new Date().toISOString() } : v
-    ));
-    const target = visitors.find(v => v.id === visitorId);
-    if (target) {
-      const updated = { ...target, accessEnabled: enabled, updatedAt: new Date().toISOString() };
-      upsertDocSilent(COLLECTIONS.visitors, visitorId, updated).catch(() => {});
-      // Sync local session if it's the current visitor
-      if (currentVisitor?.id === visitorId) {
-        const updatedSession = { ...currentVisitor, accessEnabled: enabled };
-        setCurrentVisitor(updatedSession);
-        AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updatedSession)).catch(() => {});
+    const now = new Date().toISOString();
+    setVisitors(prev => {
+      const next = prev.map(v =>
+        v.id === visitorId ? { ...v, accessEnabled: enabled, updatedAt: now } : v
+      );
+      // Fire Firestore sync with fresh data
+      const target = next.find(v => v.id === visitorId);
+      if (target) {
+        upsertDocSilent(COLLECTIONS.visitors, visitorId, target).catch(() => {});
       }
-    }
-  }, [visitors, currentVisitor]);
+      return next;
+    });
+    // Sync local session if it's the current visitor
+    setCurrentVisitor(prev => {
+      if (!prev || prev.id !== visitorId) return prev;
+      const updatedSession = { ...prev, accessEnabled: enabled, updatedAt: now };
+      AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updatedSession)).catch(() => {});
+      return updatedSession;
+    });
+  }, []);
 
   const deleteVisitor = useCallback(async (visitorId: string) => {
     setVisitors(prev => prev.filter(v => v.id !== visitorId));
     removeDoc(COLLECTIONS.visitors, visitorId).catch(() => {});
-    if (currentVisitor?.id === visitorId) {
-      await AsyncStorage.removeItem(SESSION_KEY);
-      if (mounted.current) setCurrentVisitor(null);
-    }
-  }, [visitors, currentVisitor]);
+    setCurrentVisitor(prev => {
+      if (!prev || prev.id !== visitorId) return prev;
+      AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+      return null;
+    });
+  }, []);
 
   const clearVisitorActivity = useCallback(async (visitorId: string) => {
-    const target = visitors.find(v => v.id === visitorId);
-    if (!target) return;
-    const cleared = {
-      ...target,
-      artworkViews: [],
-      totalArtworkViews: 0,
-      lastArtworkViewed: '',
-      updatedAt: new Date().toISOString(),
-    };
-    setVisitors(prev => prev.map(v => v.id === visitorId ? cleared : v));
-    upsertDocSilent(COLLECTIONS.visitors, visitorId, cleared).catch(() => {});
-    if (currentVisitor?.id === visitorId) {
-      setCurrentVisitor(cleared);
+    const now = new Date().toISOString();
+    setVisitors(prev => {
+      const next = prev.map(v => {
+        if (v.id !== visitorId) return v;
+        const cleared = { ...v, artworkViews: [], totalArtworkViews: 0, lastArtworkViewed: '', updatedAt: now };
+        upsertDocSilent(COLLECTIONS.visitors, visitorId, cleared).catch(() => {});
+        return cleared;
+      });
+      return next;
+    });
+    setCurrentVisitor(prev => {
+      if (!prev || prev.id !== visitorId) return prev;
+      const cleared = { ...prev, artworkViews: [], totalArtworkViews: 0, lastArtworkViewed: '', updatedAt: now };
       AsyncStorage.setItem(SESSION_KEY, JSON.stringify(cleared)).catch(() => {});
-    }
-  }, [visitors, currentVisitor]);
+      return cleared;
+    });
+  }, []);
 
   // ─── Live access check from Firestore (always authoritative) ─────────────────
   const checkAccessEnabled = useCallback(async (visitorId: string): Promise<boolean> => {
@@ -381,19 +388,25 @@ export function VisitorProvider({ children }: { children: ReactNode }) {
           }
           return [...prev, found as Visitor];
         });
-        if (currentVisitor?.id === visitorId) {
-          const merged = { ...currentVisitor, ...(found as Visitor) };
-          setCurrentVisitor(merged);
+        setCurrentVisitor(prev => {
+          if (!prev || prev.id !== visitorId) return prev;
+          const merged = { ...prev, ...(found as Visitor) };
           AsyncStorage.setItem(SESSION_KEY, JSON.stringify(merged)).catch(() => {});
-        }
+          return merged;
+        });
       }
       return (found as any).accessEnabled !== false;
     } catch {
       // Offline — use local cache; default allow if unknown
-      const local = visitors.find(v => v.id === visitorId);
-      return local ? local.accessEnabled !== false : true;
+      return new Promise(resolve => {
+        setVisitors(prev => {
+          const local = prev.find(v => v.id === visitorId);
+          resolve(local ? local.accessEnabled !== false : true);
+          return prev;
+        });
+      });
     }
-  }, [visitors, currentVisitor]);
+  }, []);
 
   const isRegistered = currentVisitor !== null;
   const analytics = computeAnalytics(visitors);

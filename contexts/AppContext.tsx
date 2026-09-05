@@ -370,7 +370,6 @@ export interface ArtworkCostSheet {
   deliveryCost: number;
   installationPriceCost: number;
   showPriceToCustomer: boolean;
-  visibleToVisitors: boolean;
   notes: string;
   createdAt: string;
 }

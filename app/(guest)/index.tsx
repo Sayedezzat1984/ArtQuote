@@ -108,11 +108,13 @@ export default function GuestGalleryScreen() {
     try {
       const prevIds = new Set(knownIdsRef.current);
       await forceSyncNow();
-      // Brief wait for state to settle
-      await new Promise(res => setTimeout(res, 300));
-      const currentIds = new Set<string>(
-        visibleArtworks.map((a: Artwork) => a.id)
+      // Brief wait for state to settle — artworks state updates via Firestore listener
+      await new Promise(res => setTimeout(res, 600));
+      // Read current artworks from ref to avoid stale closure
+      const allArtworks: Artwork[] = (artworks as Artwork[]).filter(
+        (a: Artwork) => (a as any).visibleToVisitors !== false
       );
+      const currentIds = new Set<string>(allArtworks.map((a: Artwork) => a.id));
       const addedIds = new Set<string>();
       currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
       knownIdsRef.current = currentIds;
@@ -126,7 +128,7 @@ export default function GuestGalleryScreen() {
     } finally {
       isSyncing.current = false;
     }
-  }, [forceSyncNow, visibleArtworks]);
+  }, [forceSyncNow, artworks]);
 
   function showToast(status: RefreshStatus) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -145,8 +147,11 @@ export default function GuestGalleryScreen() {
     try {
       const prevIds = new Set(knownIdsRef.current);
       await forceSyncNow();
-      await new Promise(res => setTimeout(res, 400));
-      const currentIds = new Set<string>(visibleArtworks.map((a: Artwork) => a.id));
+      await new Promise(res => setTimeout(res, 600));
+      const allArtworks: Artwork[] = (artworks as Artwork[]).filter(
+        (a: Artwork) => (a as any).visibleToVisitors !== false
+      );
+      const currentIds = new Set<string>(allArtworks.map((a: Artwork) => a.id));
       const addedIds = new Set<string>();
       currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
       knownIdsRef.current = currentIds;
@@ -162,7 +167,7 @@ export default function GuestGalleryScreen() {
     } catch {
       setRefreshStatus('idle');
     }
-  }, [refreshStatus, forceSyncNow, visibleArtworks]);
+  }, [refreshStatus, forceSyncNow, artworks]);
 
   const ALL_LABEL = 'الكل';
   const categoryLabels = [ALL_LABEL, ...artworkCategories.map((c: any) => c.name)];
