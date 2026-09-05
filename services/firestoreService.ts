@@ -3,7 +3,7 @@
 // Includes offline queue, sync status, and real-time listeners
 import {
   collection, doc, setDoc, deleteDoc, onSnapshot,
-  query, orderBy, writeBatch, getDocs, enableIndexedDbPersistence,
+  writeBatch, getDocs,
   Unsubscribe, DocumentData, QuerySnapshot,
 } from 'firebase/firestore';
 import { db, COLLECTIONS } from '@/services/firebase';

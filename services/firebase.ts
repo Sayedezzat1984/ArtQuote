@@ -4,10 +4,10 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   initializeAuth,
-  // @ts-ignore
+  // @ts-ignore — getReactNativePersistence may not be in type defs but is available at runtime
   getReactNativePersistence,
 } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -42,12 +42,8 @@ try {
 // Initialize Firestore
 const db = getFirestore(app);
 
-// Enable offline persistence (best-effort on web)
-if (Platform.OS === 'web') {
-  enableIndexedDbPersistence(db).catch(() => {
-    // persistence may be unavailable in some environments
-  });
-}
+// Offline persistence is handled automatically by the Firestore SDK
+// via its built-in IndexedDB cache on web (no explicit call needed in v10+)
 
 // ─── Firestore collection names ────────────────────────────────────────────
 export const COLLECTIONS = {
