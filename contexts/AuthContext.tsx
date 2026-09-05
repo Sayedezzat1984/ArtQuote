@@ -81,8 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     try {
       await firebaseSignOut(auth);
-      // Route back to guest/visitor start screen
-      setAppMode('client');
+      setAppMode('unauthenticated');
     } catch {}
   }
 
