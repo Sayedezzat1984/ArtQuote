@@ -2,10 +2,23 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform } from 'react-native';
-import { Colors, FontSize } from '@/constants/theme';
+import { Platform, Pressable, Text, StyleSheet } from 'react-native';
+import { Colors, FontSize, FontWeight, Radius } from '@/constants/theme';
 import { isTablet } from '@/constants/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
+
+function LangToggle() {
+  const { lang, toggleLang } = useLanguage();
+  return (
+    <Pressable
+      onPress={toggleLang}
+      style={({ pressed }) => [styles.langBtn, pressed && { opacity: 0.7 }]}
+      hitSlop={8}
+    >
+      <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'عر'}</Text>
+    </Pressable>
+  );
+}
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -22,10 +35,19 @@ export default function TabLayout() {
     borderTopColor: Colors.border,
   };
 
+  const headerOptions = {
+    headerShown: true,
+    headerStyle: { backgroundColor: Colors.surface },
+    headerTintColor: Colors.textPrimary,
+    headerTitleStyle: { fontSize: isTablet ? FontSize.lg : FontSize.base, fontWeight: '700' as const, color: Colors.textPrimary },
+    headerRight: () => <LangToggle />,
+    headerRightContainerStyle: { paddingRight: 12 },
+  };
+
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        ...headerOptions,
         tabBarStyle,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
@@ -77,7 +99,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="manufacturing"
         options={{
-          title: 'التصنيع',
+          title: t('tabManufacturing'),
           tabBarIcon: ({ color, size }) => <MaterialIcons name="precision-manufacturing" size={size} color={color} />,
         }}
       />
@@ -91,3 +113,23 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  langBtn: {
+    minWidth: 40,
+    height: 34,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primarySurface,
+    borderWidth: 1,
+    borderColor: Colors.primary + '60',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  langBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.primary,
+    letterSpacing: 0.5,
+  },
+});
