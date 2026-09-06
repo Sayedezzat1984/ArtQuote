@@ -54,7 +54,7 @@ export function PinScreen({ onSuccess }: PinScreenProps) {
             </View>
           </View>
           <Text style={styles.brandName}>Sayed Ezzat</Text>
-          <Text style={styles.brandAr}>سيد عزت</Text>
+          <Text style={styles.brandAr}>S.E Gallery</Text>
           <Text style={styles.brandSub}>فنان تشكيلي · Visual Artist</Text>
         </View>
 

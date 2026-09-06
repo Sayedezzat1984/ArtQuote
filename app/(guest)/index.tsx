@@ -213,7 +213,7 @@ export default function GuestGalleryScreen() {
           <Text style={styles.backBtnText}>خروج</Text>
         </Pressable>
         <View style={styles.titleBlock}>
-          <Text style={styles.title}>سيد عزت</Text>
+          <Text style={styles.title}>S.E Gallery</Text>
           <Text style={styles.subtitle}>معرض الأعمال الفنية</Text>
         </View>
         {/* Refresh Button */}

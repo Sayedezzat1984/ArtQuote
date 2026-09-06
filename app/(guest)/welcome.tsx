@@ -120,7 +120,7 @@ export default function WelcomeScreen() {
           <Animated.View style={[styles.textBlock, { opacity: textOpacity, transform: [{ translateY: textY }] }]}>
             {/* Gold divider */}
             <View style={styles.divider} />
-            <Text style={styles.artistName}>سيد عزت</Text>
+            <Text style={styles.artistName}>S.E Gallery</Text>
             <Text style={styles.galleryTitle}>معرض الأعمال الفنية</Text>
             <View style={styles.divider} />
             {/* Tagline */}

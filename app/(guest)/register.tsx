@@ -101,7 +101,7 @@ export default function VisitorRegisterScreen() {
             <View style={styles.logoCircle}>
               <MaterialIcons name="palette" size={isTablet ? 56 : 44} color={Colors.primary} />
             </View>
-            <Text style={styles.brandName}>سيد عزت</Text>
+            <Text style={styles.brandName}>S.E Gallery</Text>
             <Text style={styles.brandSub}>معرض الأعمال الفنية</Text>
           </View>
 

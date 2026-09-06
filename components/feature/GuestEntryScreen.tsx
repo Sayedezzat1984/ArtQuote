@@ -370,7 +370,7 @@ export function GuestEntryScreen() {
 
               {/* Gold divider */}
               <View style={gs.divider} />
-              <Text style={gs.brandName}>سيد عزت</Text>
+              <Text style={gs.brandName}>S.E Gallery</Text>
               <Text style={gs.brandSub}>معرض الأعمال الفنية</Text>
               <View style={gs.starRow}>
                 {[0,1,2,3,4].map(i => (
