@@ -418,6 +418,7 @@ export interface Quote {
 // ─── App Settings ──────────────────────────────────────────────────────────
 export interface AppSettings {
   whatsappNumber: string;
+  showPricesToVisitors: boolean;
   [key: string]: any;
 }
 
@@ -528,7 +529,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline' | 'error'>('idle');
   const [pendingOpsCount, setPendingOpsCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ whatsappNumber: '' });
+  const [appSettings, setAppSettings] = useState<AppSettings>({ whatsappNumber: '', showPricesToVisitors: false });
 
   const unsubsRef = useRef<(() => void)[]>([]);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -659,7 +660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const raw = await AsyncStorage.getItem('appSettings');
         if (raw) {
           const parsed = JSON.parse(raw);
-          setAppSettings(prev => ({ whatsappNumber: '', ...prev, ...parsed }));
+          setAppSettings(prev => ({ whatsappNumber: '', showPricesToVisitors: false, ...prev, ...parsed }));
         }
       } catch {}
     } catch {}
