@@ -338,58 +338,6 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        {/* Price Visibility — Admin only */}
-        {isAdmin ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <View style={styles.toggleWrap}>
-                <Pressable
-                  onPress={() => updateAppSettings({ showPricesToVisitors: !appSettings?.showPricesToVisitors })}
-                  style={[
-                    styles.toggle,
-                    appSettings?.showPricesToVisitors ? styles.toggleOn : styles.toggleOff,
-                  ]}
-                  accessibilityLabel="إظهار الأسعار للزوار"
-                >
-                  <View style={[
-                    styles.toggleThumb,
-                    appSettings?.showPricesToVisitors ? styles.toggleThumbOn : styles.toggleThumbOff,
-                  ]} />
-                </Pressable>
-                <Text style={[styles.toggleLabel, appSettings?.showPricesToVisitors && { color: Colors.success }]}>
-                  {appSettings?.showPricesToVisitors ? 'الأسعار ظاهرة للزوار' : 'الأسعار مخفية عن الزوار'}
-                </Text>
-              </View>
-              <Text style={styles.sectionTitle}>إظهار الأسعار للزوار</Text>
-            </View>
-            <View style={[
-              styles.priceVisCard,
-              { borderColor: appSettings?.showPricesToVisitors ? Colors.success + '50' : Colors.border },
-            ]}>
-              <View style={[
-                styles.priceVisIcon,
-                { backgroundColor: appSettings?.showPricesToVisitors ? Colors.successSurface : Colors.surfaceElevated },
-              ]}>
-                <MaterialIcons
-                  name={appSettings?.showPricesToVisitors ? 'visibility' : 'visibility-off'}
-                  size={22}
-                  color={appSettings?.showPricesToVisitors ? Colors.success : Colors.textMuted}
-                />
-              </View>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.priceVisTitle}>
-                  {appSettings?.showPricesToVisitors ? 'الأسعار مرئية في معرض الزوار' : 'الأسعار مخفية في معرض الزوار'}
-                </Text>
-                <Text style={styles.priceVisSub}>
-                  {appSettings?.showPricesToVisitors
-                    ? 'يرى الزائر سعر كل عمل فني على صفحة التفاصيل'
-                    : 'لا يرى الزائر أي أسعار — الأسعار محفوظة في الإدارة'}
-                </Text>
-              </View>
-            </View>
-          </>
-        ) : null}
-
         {/* WhatsApp Settings — Admin only */}
         {isAdmin ? (
           <>
@@ -525,26 +473,6 @@ const styles = StyleSheet.create({
   waIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   waNumber: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   waLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  // Price visibility control
-  toggleWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  toggle: {
-    width: 44, height: 24, borderRadius: 12, justifyContent: 'center',
-    paddingHorizontal: 2, borderWidth: 1,
-  },
-  toggleOn: { backgroundColor: Colors.success + '30', borderColor: Colors.success },
-  toggleOff: { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border },
-  toggleThumb: { width: 18, height: 18, borderRadius: 9 },
-  toggleThumbOn: { backgroundColor: Colors.success, alignSelf: 'flex-end' },
-  toggleThumbOff: { backgroundColor: Colors.textMuted, alignSelf: 'flex-start' },
-  toggleLabel: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium },
-  priceVisCard: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
-    backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.base,
-    borderWidth: 1, marginBottom: Spacing.xl,
-  },
-  priceVisIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  priceVisTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  priceVisSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 3, textAlign: 'right' },
   // WA Modal
   waOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
   waSheet: { backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xxl, borderTopRightRadius: Radius.xxl, paddingBottom: 24 },

@@ -186,17 +186,6 @@ export default function GuestArtworkDetailScreen() {
             </View>
           ) : null}
 
-          {/* Price — shown only when Admin has enabled price visibility */}
-          {appSettings?.showPricesToVisitors && artwork.price > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>السعر</Text>
-              <View style={styles.priceRow}>
-                <Text style={styles.priceValue}>{artwork.price.toLocaleString()}</Text>
-                <Text style={styles.priceCurrency}>ج.م</Text>
-              </View>
-            </View>
-          ) : null}
-
           {/* Availability */}
           <View style={styles.availRow}>
             <View style={[styles.availBadge, { backgroundColor: artwork.available ? Colors.successSurface : Colors.errorSurface, borderColor: artwork.available ? Colors.success + '60' : Colors.error + '60' }]}>
@@ -376,19 +365,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1,
   },
   availText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
-
-  // Price display
-  priceRow: {
-    flexDirection: 'row', alignItems: 'baseline', gap: 6, justifyContent: 'flex-end',
-  },
-  priceValue: {
-    fontSize: isTablet ? FontSize.xxxl : FontSize.xxl,
-    fontWeight: FontWeight.extrabold,
-    color: Colors.primary,
-  },
-  priceCurrency: {
-    fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.primary, opacity: 0.8,
-  },
 
   simpleValue: { fontSize: FontSize.base, color: Colors.textPrimary, textAlign: 'right', fontWeight: FontWeight.semibold },
 
