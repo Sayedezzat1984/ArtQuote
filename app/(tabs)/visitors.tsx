@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
-import { useVisitor, Visitor, ArtworkViewRecord } from '@/contexts/VisitorContext';
+import { useVisitor, Visitor, ArtworkViewRecord, HourlyDistribution } from '@/contexts/VisitorContext';
 import { isTablet, pagePadding } from '@/constants/responsive';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'blocked';
@@ -524,26 +524,124 @@ export default function VisitorsScreen() {
         ) : null}
       </ScrollView>
 
-      {/* Most/Least Viewed */}
-      {analytics.mostViewedArtwork ? (
-        <View style={styles.topArtworksRow}>
-          <View style={[styles.topCard, { borderColor: Colors.primary + '40' }]}>
-            <MaterialIcons name="trending-up" size={14} color={Colors.primary} />
-            <View style={{ flex: 1, alignItems: 'flex-end' }}>
-              <Text style={styles.topCardTitle} numberOfLines={1}>{analytics.mostViewedArtwork.artworkTitle}</Text>
-              <Text style={styles.topCardSub}>{analytics.mostViewedArtwork.totalViews} مشاهدة · الأكثر</Text>
-            </View>
+      {/* ── Detailed Stats Section ──────────────────────────────── */}
+      <View style={styles.detailStatsRow}>
+        {/* Return Rate */}
+        <View style={styles.detailCard}>
+          <View style={styles.detailCardHeader}>
+            <MaterialIcons name="loop" size={14} color={Colors.primary} />
+            <Text style={styles.detailCardLabel}>معدل العودة</Text>
           </View>
-          {analytics.leastViewedArtwork &&
-           analytics.leastViewedArtwork.artworkId !== analytics.mostViewedArtwork.artworkId ? (
-            <View style={[styles.topCard, { borderColor: Colors.textMuted + '30' }]}>
-              <MaterialIcons name="trending-down" size={14} color={Colors.textMuted} />
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.topCardTitle} numberOfLines={1}>{analytics.leastViewedArtwork.artworkTitle}</Text>
-                <Text style={styles.topCardSub}>{analytics.leastViewedArtwork.totalViews} مشاهدة · الأقل</Text>
+          <Text style={styles.detailCardVal}>{analytics.returnRate}%</Text>
+          {/* Progress bar */}
+          <View style={styles.progressBg}>
+            <View style={[styles.progressFill, { width: `${analytics.returnRate}%` as any, backgroundColor: Colors.primary }]} />
+          </View>
+        </View>
+        {/* Avg Visits */}
+        <View style={styles.detailCard}>
+          <View style={styles.detailCardHeader}>
+            <MaterialIcons name="repeat" size={14} color={Colors.info} />
+            <Text style={styles.detailCardLabel}>متوسط الزيارات</Text>
+          </View>
+          <Text style={[styles.detailCardVal, { color: Colors.info }]}>{analytics.avgVisitsPerVisitor}</Text>
+          <Text style={styles.detailCardSub}>لكل زائر</Text>
+        </View>
+        {/* Avg Artworks */}
+        <View style={styles.detailCard}>
+          <View style={styles.detailCardHeader}>
+            <MaterialIcons name="palette" size={14} color={Colors.success} />
+            <Text style={styles.detailCardLabel}>متوسط المشاهدات</Text>
+          </View>
+          <Text style={[styles.detailCardVal, { color: Colors.success }]}>{analytics.avgArtworksPerVisitor}</Text>
+          <Text style={styles.detailCardSub}>عمل / زائر</Text>
+        </View>
+      </View>
+
+      {/* Today's Breakdown */}
+      {analytics.visitorsToday > 0 ? (
+        <View style={styles.todayRow}>
+          <View style={[styles.todayBadge, { borderColor: Colors.success + '50', backgroundColor: Colors.successSurface }]}>
+            <MaterialIcons name="fiber-new" size={13} color={Colors.success} />
+            <Text style={[styles.todayBadgeText, { color: Colors.success }]}>{analytics.newVisitorsToday} جديد اليوم</Text>
+          </View>
+          <View style={[styles.todayBadge, { borderColor: Colors.info + '50', backgroundColor: Colors.info + '15' }]}>
+            <MaterialIcons name="loop" size={13} color={Colors.info} />
+            <Text style={[styles.todayBadgeText, { color: Colors.info }]}>{analytics.returningVisitorsToday} عائد اليوم</Text>
+          </View>
+          <View style={[styles.todayBadge, { borderColor: Colors.primary + '40', backgroundColor: Colors.primarySurface }]}>
+            <MaterialIcons name="schedule" size={13} color={Colors.primary} />
+            <Text style={[styles.todayBadgeText, { color: Colors.primary }]}>ذروة: {analytics.peakHourLabel}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Hourly Distribution */}
+      {analytics.totalVisitors > 0 ? (
+        <View style={styles.hourlySection}>
+          <Text style={styles.hourlySectionTitle}>توزيع أوقات الزيارة</Text>
+          <View style={styles.hourlyBars}>
+            {([
+              { key: 'morning', label: 'صباح', icon: 'wb-sunny', color: '#F59E0B' },
+              { key: 'afternoon', label: 'ظهر', icon: 'wb-cloudy', color: '#3B82F6' },
+              { key: 'evening', label: 'مساء', icon: 'nights-stay', color: '#8B5CF6' },
+              { key: 'night', label: 'ليل', icon: 'bedtime', color: '#1E293B' },
+            ] as { key: keyof HourlyDistribution; label: string; icon: any; color: string }[]).map(({ key, label, icon, color }) => {
+              const val = analytics.hourlyDistribution[key];
+              const maxVal = Math.max(
+                analytics.hourlyDistribution.morning,
+                analytics.hourlyDistribution.afternoon,
+                analytics.hourlyDistribution.evening,
+                analytics.hourlyDistribution.night,
+                1
+              );
+              const pct = Math.round((val / maxVal) * 100);
+              return (
+                <View key={key} style={styles.hourlyBarCol}>
+                  <Text style={styles.hourlyBarVal}>{val}</Text>
+                  <View style={styles.hourlyBarBg}>
+                    <View style={[styles.hourlyBarFill, { height: `${pct}%` as any, backgroundColor: color }]} />
+                  </View>
+                  <MaterialIcons name={icon} size={13} color={color} />
+                  <Text style={styles.hourlyBarLabel}>{label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Top 5 Artworks */}
+      {analytics.topArtworks.length > 0 ? (
+        <View style={styles.topSection}>
+          <Text style={styles.topSectionTitle}>أكثر الأعمال مشاهدةً</Text>
+          {analytics.topArtworks.map((aw, idx) => {
+            const maxViews = analytics.topArtworks[0]?.totalViews || 1;
+            const pct = Math.round((aw.totalViews / maxViews) * 100);
+            const visitorPct = analytics.totalVisitors > 0
+              ? Math.round((aw.uniqueVisitors / analytics.totalVisitors) * 100)
+              : 0;
+            return (
+              <View key={aw.artworkId} style={styles.topArtworkRow}>
+                <View style={[styles.topArtworkRank, idx === 0 && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                  <Text style={[styles.topArtworkRankText, idx === 0 && { color: '#fff' }]}>#{idx + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.topArtworkMeta}>
+                    <Text style={styles.topArtworkSub}>{aw.uniqueVisitors} زائر ({visitorPct}%)</Text>
+                    <Text style={styles.topArtworkName} numberOfLines={1}>{aw.artworkTitle}</Text>
+                  </View>
+                  <View style={styles.topArtworkBarBg}>
+                    <View style={[styles.topArtworkBarFill, { width: `${pct}%` as any }]} />
+                  </View>
+                </View>
+                <View style={styles.topArtworkViewsBadge}>
+                  <Text style={styles.topArtworkViews}>{aw.totalViews}</Text>
+                  <Text style={styles.topArtworkViewsLbl}>مشاهدة</Text>
+                </View>
               </View>
-            </View>
-          ) : null}
+            );
+          })}
         </View>
       ) : null}
 
@@ -665,10 +763,42 @@ const styles = StyleSheet.create({
   anaCard: { backgroundColor: Colors.card, borderRadius: Radius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border, minWidth: 64 },
   anaVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
   anaLbl: { fontSize: 10, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
-  topArtworksRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: pagePadding, marginBottom: Spacing.xs },
-  topCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1 },
-  topCardTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
-  topCardSub: { fontSize: 10, color: Colors.textMuted, marginTop: 1 },
+  // Detail Stats
+  detailStatsRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: pagePadding, marginBottom: Spacing.sm },
+  detailCard: { flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border },
+  detailCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginBottom: 4 },
+  detailCardLabel: { fontSize: 9, color: Colors.textMuted, fontWeight: FontWeight.medium },
+  detailCardVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary, textAlign: 'right' },
+  detailCardSub: { fontSize: 9, color: Colors.textMuted, textAlign: 'right', marginTop: 2 },
+  progressBg: { height: 4, backgroundColor: Colors.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2 },
+  // Today Breakdown
+  todayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, paddingHorizontal: pagePadding, marginBottom: Spacing.sm },
+  todayBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
+  todayBadgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
+  // Hourly
+  hourlySection: { marginHorizontal: pagePadding, backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
+  hourlySectionTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.md, borderRightWidth: 2, borderRightColor: Colors.primary, paddingRight: 8 },
+  hourlyBars: { flexDirection: 'row', justifyContent: 'space-around', height: 80, alignItems: 'flex-end', gap: Spacing.xs },
+  hourlyBarCol: { flex: 1, alignItems: 'center', gap: 3 },
+  hourlyBarVal: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  hourlyBarBg: { flex: 1, width: '100%', backgroundColor: Colors.surfaceElevated, borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', minHeight: 8 },
+  hourlyBarFill: { width: '100%', borderRadius: 4, minHeight: 4 },
+  hourlyBarLabel: { fontSize: 9, color: Colors.textMuted },
+  // Top Artworks
+  topSection: { marginHorizontal: pagePadding, backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
+  topSectionTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.md, borderRightWidth: 2, borderRightColor: Colors.primary, paddingRight: 8 },
+  topArtworkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  topArtworkRank: { width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
+  topArtworkRankText: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: Colors.textMuted },
+  topArtworkMeta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  topArtworkName: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textPrimary, flex: 1, textAlign: 'right' },
+  topArtworkSub: { fontSize: 9, color: Colors.textMuted, marginLeft: 4 },
+  topArtworkBarBg: { height: 5, backgroundColor: Colors.surfaceElevated, borderRadius: 3, overflow: 'hidden' },
+  topArtworkBarFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3, minWidth: 4 },
+  topArtworkViewsBadge: { alignItems: 'center', minWidth: 44 },
+  topArtworkViews: { fontSize: FontSize.base, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  topArtworkViewsLbl: { fontSize: 9, color: Colors.textMuted },
   searchWrap: { paddingHorizontal: pagePadding, paddingBottom: Spacing.xs, paddingTop: Spacing.xs },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, paddingHorizontal: Spacing.md, borderWidth: 1, borderColor: Colors.border },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: FontSize.base, color: Colors.textPrimary, marginLeft: Spacing.sm },

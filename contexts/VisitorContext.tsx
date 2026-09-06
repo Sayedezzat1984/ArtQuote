@@ -43,19 +43,33 @@ export interface ArtworkStats {
   lastViewedAt: string;
 }
 
+export interface HourlyDistribution {
+  morning: number;   // 6–11
+  afternoon: number; // 12–17
+  evening: number;   // 18–22
+  night: number;     // 23–5
+}
+
 export interface VisitorAnalytics {
   totalVisitors: number;
   totalVisits: number;
   returningVisitors: number;
+  newVisitorsToday: number;
+  returningVisitorsToday: number;
   blockedVisitors: number;
   totalArtworkViews: number;
   avgArtworksPerVisitor: number;
+  avgVisitsPerVisitor: number;
+  returnRate: number;           // percentage 0–100
   mostViewedArtwork: ArtworkStats | null;
   leastViewedArtwork: ArtworkStats | null;
   visitorsToday: number;
   visitorsThisWeek: number;
   visitorsThisMonth: number;
   artworkStats: ArtworkStats[];
+  topArtworks: ArtworkStats[];  // top 5
+  hourlyDistribution: HourlyDistribution;
+  peakHourLabel: string;
 }
 
 interface VisitorContextType {
@@ -97,6 +111,13 @@ function isThisMonth(dateStr: string, now: Date): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
+function getHourLabel(hour: number): string {
+  if (hour >= 6 && hour <= 11) return 'الصباح';
+  if (hour >= 12 && hour <= 17) return 'الظهر';
+  if (hour >= 18 && hour <= 22) return 'المساء';
+  return 'الليل';
+}
+
 function computeAnalytics(visitors: Visitor[]): VisitorAnalytics {
   const now = new Date();
   const artworkMap = new Map<string, { title: string; totalViews: number; uniqueVisitors: Set<string>; lastViewedAt: string }>();
@@ -107,14 +128,32 @@ function computeAnalytics(visitors: Visitor[]): VisitorAnalytics {
   let visitorsToday = 0;
   let visitorsThisWeek = 0;
   let visitorsThisMonth = 0;
+  let newVisitorsToday = 0;
+  let returningVisitorsToday = 0;
+  const hourly: HourlyDistribution = { morning: 0, afternoon: 0, evening: 0, night: 0 };
 
   for (const v of visitors) {
-    if (v.totalVisits > 1) returningVisitors++;
+    const isReturning = v.totalVisits > 1;
+    if (isReturning) returningVisitors++;
     if (v.accessEnabled === false) blockedVisitors++;
-    if (isSameDay(v.lastVisitDate, now)) visitorsToday++;
+    const isToday = isSameDay(v.lastVisitDate, now);
+    if (isToday) {
+      visitorsToday++;
+      if (isReturning) returningVisitorsToday++;
+      else newVisitorsToday++;
+    }
     if (isThisWeek(v.lastVisitDate, now)) visitorsThisWeek++;
     if (isThisMonth(v.lastVisitDate, now)) visitorsThisMonth++;
     totalArtworkViews += v.totalArtworkViews || 0;
+
+    // Hourly distribution based on first visit date
+    try {
+      const visitHour = new Date(v.firstVisitDate).getHours();
+      if (visitHour >= 6 && visitHour <= 11) hourly.morning++;
+      else if (visitHour >= 12 && visitHour <= 17) hourly.afternoon++;
+      else if (visitHour >= 18 && visitHour <= 22) hourly.evening++;
+      else hourly.night++;
+    } catch {}
 
     for (const av of v.artworkViews || []) {
       if (!artworkMap.has(av.artworkId)) {
@@ -142,19 +181,41 @@ function computeAnalytics(visitors: Visitor[]): VisitorAnalytics {
 
   artworkStats.sort((a, b) => b.totalViews - a.totalViews);
 
+  const totalVisitors = visitors.length;
+  const totalVisits = visitors.reduce((s, v) => s + (v.totalVisits || 1), 0);
+  const returnRate = totalVisitors > 0 ? Math.round((returningVisitors / totalVisitors) * 100) : 0;
+  const avgVisitsPerVisitor = totalVisitors > 0 ? Math.round((totalVisits / totalVisitors) * 10) / 10 : 0;
+
+  // Peak hour label
+  const peakVal = Math.max(hourly.morning, hourly.afternoon, hourly.evening, hourly.night);
+  let peakHourLabel = '—';
+  if (peakVal > 0) {
+    if (hourly.morning === peakVal) peakHourLabel = 'الصباح (6-11)';
+    else if (hourly.afternoon === peakVal) peakHourLabel = 'الظهر (12-17)';
+    else if (hourly.evening === peakVal) peakHourLabel = 'المساء (18-22)';
+    else peakHourLabel = 'الليل (23-5)';
+  }
+
   return {
-    totalVisitors: visitors.length,
-    totalVisits: visitors.reduce((s, v) => s + (v.totalVisits || 1), 0),
+    totalVisitors,
+    totalVisits,
     returningVisitors,
+    newVisitorsToday,
+    returningVisitorsToday,
     blockedVisitors,
     totalArtworkViews,
-    avgArtworksPerVisitor: visitors.length > 0 ? Math.round((totalArtworkViews / visitors.length) * 10) / 10 : 0,
+    avgArtworksPerVisitor: totalVisitors > 0 ? Math.round((totalArtworkViews / totalVisitors) * 10) / 10 : 0,
+    avgVisitsPerVisitor,
+    returnRate,
     mostViewedArtwork: artworkStats[0] || null,
     leastViewedArtwork: artworkStats[artworkStats.length - 1] || null,
     visitorsToday,
     visitorsThisWeek,
     visitorsThisMonth,
     artworkStats,
+    topArtworks: artworkStats.slice(0, 5),
+    hourlyDistribution: hourly,
+    peakHourLabel,
   };
 }
 
