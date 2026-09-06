@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
-  Modal, ScrollView, ActivityIndicator, Switch, Alert,
+  Modal, ScrollView, ActivityIndicator, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -297,7 +297,6 @@ const dm = StyleSheet.create({
   dangerSection: { borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.xl, marginTop: Spacing.sm },
   deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.errorSurface, borderRadius: Radius.lg, padding: Spacing.base, borderWidth: 1, borderColor: Colors.error + '40' },
   deleteBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.error },
-  // Confirm dialogs
   confirmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   confirmBox: { backgroundColor: Colors.surface, borderRadius: Radius.xl, padding: Spacing.xl, alignItems: 'center', width: '100%', maxWidth: 360, ...Shadow.md },
   confirmTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: Spacing.md, marginBottom: Spacing.sm },
@@ -348,7 +347,6 @@ function VisitorCard({
               <Text style={vc.badgeLbl}>مشاهدة</Text>
             </View>
           </View>
-          {/* Quick Access Toggle */}
           <Pressable
             onPress={(e) => { e.stopPropagation?.(); onToggleAccess(!isBlocked); }}
             style={[vc.toggleBtn, isBlocked ? vc.toggleBtnBlocked : vc.toggleBtnActive]}
@@ -443,7 +441,6 @@ export default function VisitorsScreen() {
 
   const handleToggleAccess = useCallback((visitorId: string, enabled: boolean) => {
     updateVisitorAccess(visitorId, enabled);
-    // Update detail view if open
     setDetailVisitor(prev => prev?.id === visitorId ? { ...prev, accessEnabled: enabled } : prev);
   }, [updateVisitorAccess]);
 
@@ -454,13 +451,12 @@ export default function VisitorsScreen() {
 
   const handleClearActivity = useCallback((visitor: Visitor) => {
     clearVisitorActivity(visitor.id);
-    // Update detail view immediately
     setDetailVisitor(prev => prev?.id === visitor.id
       ? { ...prev, artworkViews: [], totalArtworkViews: 0, lastArtworkViewed: '' }
       : prev);
   }, [clearVisitorActivity]);
 
-  const FILTERS: { key: FilterKey; label: string; icon?: string }[] = [
+  const FILTERS: { key: FilterKey; label: string }[] = [
     { key: 'all', label: 'الكل' },
     { key: 'today', label: 'اليوم' },
     { key: 'week', label: 'هذا الأسبوع' },
@@ -475,21 +471,13 @@ export default function VisitorsScreen() {
     { key: 'blocked', label: 'المحظورون أولاً' },
   ];
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={handleRefresh} style={styles.refreshBtn} disabled={refreshing}>
-          {refreshing
-            ? <ActivityIndicator size="small" color={Colors.primary} />
-            : <MaterialIcons name="refresh" size={20} color={Colors.textSecondary} />}
-        </Pressable>
-        <Text style={styles.title}>إدارة الزوار</Text>
-      </View>
-
+  // ── All static content as ListHeaderComponent so the entire page scrolls ──
+  const listHeader = (
+    <View>
       {/* Analytics Strip */}
       <ScrollView
-        horizontal showsHorizontalScrollIndicator={false}
+        horizontal
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.analyticsRow}
       >
         <View style={[styles.anaCard, { borderColor: Colors.primary + '40' }]}>
@@ -524,21 +512,18 @@ export default function VisitorsScreen() {
         ) : null}
       </ScrollView>
 
-      {/* ── Detailed Stats Section ──────────────────────────────── */}
+      {/* Detailed Stats */}
       <View style={styles.detailStatsRow}>
-        {/* Return Rate */}
         <View style={styles.detailCard}>
           <View style={styles.detailCardHeader}>
             <MaterialIcons name="loop" size={14} color={Colors.primary} />
             <Text style={styles.detailCardLabel}>معدل العودة</Text>
           </View>
           <Text style={styles.detailCardVal}>{analytics.returnRate}%</Text>
-          {/* Progress bar */}
           <View style={styles.progressBg}>
             <View style={[styles.progressFill, { width: `${analytics.returnRate}%` as any, backgroundColor: Colors.primary }]} />
           </View>
         </View>
-        {/* Avg Visits */}
         <View style={styles.detailCard}>
           <View style={styles.detailCardHeader}>
             <MaterialIcons name="repeat" size={14} color={Colors.info} />
@@ -547,7 +532,6 @@ export default function VisitorsScreen() {
           <Text style={[styles.detailCardVal, { color: Colors.info }]}>{analytics.avgVisitsPerVisitor}</Text>
           <Text style={styles.detailCardSub}>لكل زائر</Text>
         </View>
-        {/* Avg Artworks */}
         <View style={styles.detailCard}>
           <View style={styles.detailCardHeader}>
             <MaterialIcons name="palette" size={14} color={Colors.success} />
@@ -649,10 +633,12 @@ export default function VisitorsScreen() {
       <View style={styles.searchWrap}>
         <View style={styles.searchBar}>
           <TextInput
-            value={search} onChangeText={setSearch}
+            value={search}
+            onChangeText={setSearch}
             placeholder="ابحث بالاسم أو رقم الهاتف..."
             placeholderTextColor={Colors.textMuted}
-            style={styles.searchInput} textAlign="right"
+            style={styles.searchInput}
+            textAlign="right"
           />
           {search
             ? <Pressable onPress={() => setSearch('')} hitSlop={8}><MaterialIcons name="close" size={16} color={Colors.textMuted} /></Pressable>
@@ -662,12 +648,10 @@ export default function VisitorsScreen() {
 
       {/* Filter Chips */}
       <View style={styles.filterOuter}>
-        <FlatList
-          data={FILTERS} horizontal keyExtractor={f => f.key}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContent}
-          renderItem={({ item }) => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+          {FILTERS.map(item => (
             <Pressable
+              key={item.key}
               onPress={() => setFilterKey(item.key)}
               style={[
                 styles.chip,
@@ -675,41 +659,55 @@ export default function VisitorsScreen() {
                 item.key === 'blocked' && filterKey === 'blocked' && styles.chipBlocked,
               ]}
             >
-              {item.key === 'blocked' ? <MaterialIcons name="block" size={11} color={filterKey === 'blocked' ? Colors.error : Colors.textMuted} /> : null}
+              {item.key === 'blocked'
+                ? <MaterialIcons name="block" size={11} color={filterKey === 'blocked' ? Colors.error : Colors.textMuted} />
+                : null}
               <Text style={[
                 styles.chipText,
                 filterKey === item.key && styles.chipTextActive,
                 item.key === 'blocked' && filterKey === 'blocked' && { color: Colors.error },
               ]}>{item.label}</Text>
             </Pressable>
-          )}
-        />
+          ))}
+        </ScrollView>
       </View>
 
       {/* Sort Row */}
       <View style={styles.sortOuter}>
-        <FlatList
-          data={SORTS} horizontal keyExtractor={s => s.key}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContent}
-          renderItem={({ item }) => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+          {SORTS.map(item => (
             <Pressable
+              key={item.key}
               onPress={() => setSortKey(item.key)}
               style={[styles.sortChip, sortKey === item.key && styles.sortChipActive]}
             >
               {sortKey === item.key ? <MaterialIcons name="check" size={11} color={Colors.primary} /> : null}
               <Text style={[styles.sortChipText, sortKey === item.key && styles.sortChipTextActive]}>{item.label}</Text>
             </Pressable>
-          )}
-        />
+          ))}
+        </ScrollView>
       </View>
 
       {/* Count */}
       <View style={styles.countRow}>
         <Text style={styles.countText}>{filtered.length} زائر</Text>
       </View>
+    </View>
+  );
 
-      {/* Visitor List */}
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Fixed Header */}
+      <View style={styles.header}>
+        <Pressable onPress={handleRefresh} style={styles.refreshBtn} disabled={refreshing}>
+          {refreshing
+            ? <ActivityIndicator size="small" color={Colors.primary} />
+            : <MaterialIcons name="refresh" size={20} color={Colors.textSecondary} />}
+        </Pressable>
+        <Text style={styles.title}>إدارة الزوار</Text>
+      </View>
+
+      {/* Scrollable list with all stats as header */}
       <FlatList
         data={filtered}
         keyExtractor={v => v.id}
@@ -718,6 +716,7 @@ export default function VisitorsScreen() {
         columnWrapperStyle={isTablet ? { gap: Spacing.md } : undefined}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={listHeader}
         ListEmptyComponent={
           <View style={styles.empty}>
             <MaterialIcons name="person-off" size={56} color={Colors.textMuted} />
@@ -763,7 +762,6 @@ const styles = StyleSheet.create({
   anaCard: { backgroundColor: Colors.card, borderRadius: Radius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border, minWidth: 64 },
   anaVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
   anaLbl: { fontSize: 10, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
-  // Detail Stats
   detailStatsRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: pagePadding, marginBottom: Spacing.sm },
   detailCard: { flex: 1, backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border },
   detailCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginBottom: 4 },
@@ -772,11 +770,9 @@ const styles = StyleSheet.create({
   detailCardSub: { fontSize: 9, color: Colors.textMuted, textAlign: 'right', marginTop: 2 },
   progressBg: { height: 4, backgroundColor: Colors.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 2 },
-  // Today Breakdown
   todayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, paddingHorizontal: pagePadding, marginBottom: Spacing.sm },
   todayBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
   todayBadgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
-  // Hourly
   hourlySection: { marginHorizontal: pagePadding, backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
   hourlySectionTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.md, borderRightWidth: 2, borderRightColor: Colors.primary, paddingRight: 8 },
   hourlyBars: { flexDirection: 'row', justifyContent: 'space-around', height: 80, alignItems: 'flex-end', gap: Spacing.xs },
@@ -785,7 +781,6 @@ const styles = StyleSheet.create({
   hourlyBarBg: { flex: 1, width: '100%', backgroundColor: Colors.surfaceElevated, borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', minHeight: 8 },
   hourlyBarFill: { width: '100%', borderRadius: 4, minHeight: 4 },
   hourlyBarLabel: { fontSize: 9, color: Colors.textMuted },
-  // Top Artworks
   topSection: { marginHorizontal: pagePadding, backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
   topSectionTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'right', marginBottom: Spacing.md, borderRightWidth: 2, borderRightColor: Colors.primary, paddingRight: 8 },
   topArtworkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
@@ -816,7 +811,7 @@ const styles = StyleSheet.create({
   sortChipTextActive: { color: Colors.primary, fontWeight: FontWeight.semibold },
   countRow: { paddingHorizontal: pagePadding, paddingBottom: 4, paddingTop: 2 },
   countText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right' },
-  list: { padding: pagePadding, paddingTop: Spacing.sm },
+  list: { paddingHorizontal: pagePadding, paddingTop: Spacing.sm, paddingBottom: 40 },
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: Spacing.base },
   emptySub: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 6, textAlign: 'center', paddingHorizontal: 20 },
