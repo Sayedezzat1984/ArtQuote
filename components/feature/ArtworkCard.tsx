@@ -96,7 +96,14 @@ export function ArtworkCard({ artwork, materials, onPress, onEdit, onDelete }: A
               </Pressable>
             ) : null}
           </View>
-          <Text style={styles.price}>{artwork.price.toLocaleString()} {currency}</Text>
+          {artwork.showPriceToCustomer !== false ? (
+            <Text style={styles.price}>{artwork.price.toLocaleString()} {currency}</Text>
+          ) : (
+            <View style={styles.priceHidden}>
+              <MaterialIcons name="visibility-off" size={13} color={Colors.textMuted} />
+              <Text style={styles.priceHiddenText}>السعر مخفي</Text>
+            </View>
+          )}
         </View>
       </View>
     </Pressable>
@@ -154,6 +161,8 @@ const styles = StyleSheet.create({
   moreText: { fontSize: FontSize.xs, color: Colors.textMuted, alignSelf: 'center' },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
   price: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
+  priceHidden: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.border },
+  priceHiddenText: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium },
   actions: { flexDirection: 'row', gap: Spacing.base },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: Spacing.sm },
   actionText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.primary },

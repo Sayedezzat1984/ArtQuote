@@ -1,5 +1,5 @@
 // Powered by OnSpace.AI
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
   TextInput, Modal, ScrollView,
@@ -36,6 +36,13 @@ export default function PortfolioScreen() {
   const [showForm, setShowForm] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
   const [detailArtwork, setDetailArtwork] = useState<Artwork | null>(null);
+
+  // Keep detailArtwork in sync with Firestore updates
+  useEffect(() => {
+    if (!detailArtwork) return;
+    const updated = artworks.find(a => a.id === detailArtwork.id);
+    if (updated) setDetailArtwork(updated);
+  }, [artworks]);
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('الكل');
