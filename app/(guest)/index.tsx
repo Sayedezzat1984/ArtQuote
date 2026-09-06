@@ -351,6 +351,14 @@ export default function GuestGalleryScreen() {
             <View style={styles.cardBody}>
               <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
               {item.year ? <Text style={styles.cardYear}>{item.year}</Text> : null}
+              {item.showPriceToCustomer !== false && item.price > 0 ? (
+                <Text style={styles.cardPrice}>{Number(item.price).toLocaleString()} ج.م</Text>
+              ) : item.showPriceToCustomer === false ? (
+                <View style={styles.cardPriceHidden}>
+                  <MaterialIcons name="chat" size={10} color={Colors.primary} />
+                  <Text style={styles.cardPriceHiddenText}>تواصل للسعر</Text>
+                </View>
+              ) : null}
             </View>
           </Pressable>
         )}
@@ -547,6 +555,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cardYear: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', marginTop: 2 },
+  cardPrice: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, color: Colors.primary, textAlign: 'right', marginTop: 4 },
+  cardPriceHidden: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, justifyContent: 'flex-end' },
+  cardPriceHiddenText: { fontSize: 9, color: Colors.primary, fontWeight: FontWeight.medium },
 
   // Empty
   empty: { alignItems: 'center', paddingVertical: 80 },

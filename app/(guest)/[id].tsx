@@ -186,6 +186,19 @@ export default function GuestArtworkDetailScreen() {
             </View>
           ) : null}
 
+          {/* Price */}
+          {artwork.showPriceToCustomer !== false && artwork.price > 0 ? (
+            <View style={styles.priceSection}>
+              <Text style={styles.priceLabel}>السعر</Text>
+              <Text style={styles.priceValue}>{Number(artwork.price).toLocaleString()} ج.م</Text>
+            </View>
+          ) : artwork.showPriceToCustomer === false ? (
+            <View style={styles.priceHiddenRow}>
+              <MaterialIcons name="chat" size={15} color={Colors.primary} />
+              <Text style={styles.priceHiddenMsg}>تواصل معنا للاستفسار عن السعر</Text>
+            </View>
+          ) : null}
+
           {/* Availability */}
           <View style={styles.availRow}>
             <View style={[styles.availBadge, { backgroundColor: artwork.available ? Colors.successSurface : Colors.errorSurface, borderColor: artwork.available ? Colors.success + '60' : Colors.error + '60' }]}>
@@ -367,6 +380,23 @@ const styles = StyleSheet.create({
   availText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
 
   simpleValue: { fontSize: FontSize.base, color: Colors.textPrimary, textAlign: 'right', fontWeight: FontWeight.semibold },
+
+  // Price
+  priceSection: {
+    alignItems: 'flex-end', marginBottom: 16,
+    backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.lg, padding: 16,
+    borderWidth: 1, borderColor: Colors.primary + '40',
+  },
+  priceLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold, marginBottom: 4 },
+  priceValue: { fontSize: isTablet ? 32 : 28, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  priceHiddenRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'flex-end',
+    marginBottom: 16, backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.lg, padding: 14,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  priceHiddenMsg: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.medium, textAlign: 'right' },
 
   // WhatsApp bar
   waBar: {
