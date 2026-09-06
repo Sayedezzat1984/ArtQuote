@@ -24,7 +24,11 @@ function AppShell() {
   }
 
   if (appMode === 'unauthenticated') {
-    return <GuestEntryScreen />;
+    return (
+      <LanguageProvider>
+        <GuestEntryScreen />
+      </LanguageProvider>
+    );
   }
 
   if (appMode === 'client') {

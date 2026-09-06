@@ -1,4 +1,3 @@
-
 // Powered by OnSpace.AI — Visitor Registration Screen
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -10,12 +9,14 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useVisitor } from '@/contexts/VisitorContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { isTablet } from '@/constants/responsive';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function VisitorRegisterScreen() {
   const { registerVisitor, currentVisitor, isLoadingVisitor, checkAccessEnabled } = useVisitor();
   const { signOut } = useAuth();
+  const { lang, toggleLang, t } = useLanguage();
   const router = useRouter();
 
   const [name, setName] = useState('');
@@ -23,50 +24,41 @@ export default function VisitorRegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Define handleEnter with useCallback to stabilize its reference
   const handleEnter = useCallback(async () => {
     const trimName = name.trim();
     const trimPhone = phone.trim();
-    if (!trimName) { setError('يرجى إدخال الاسم'); return; }
-    if (!trimPhone) { setError('يرجى إدخال رقم الهاتف'); return; }
-    if (trimPhone.length < 8) { setError('رقم الهاتف غير صحيح'); return; }
+    if (!trimName) { setError(lang === 'ar' ? 'يرجى إدخال الاسم' : 'Please enter your name'); return; }
+    if (!trimPhone) { setError(lang === 'ar' ? 'يرجى إدخال رقم الهاتف' : 'Please enter your phone'); return; }
+    if (trimPhone.length < 8) { setError(lang === 'ar' ? 'رقم الهاتف غير صحيح' : 'Invalid phone number'); return; }
     setError('');
     setLoading(true);
     try {
       const visitor = await registerVisitor(trimName, trimPhone);
-      // After registration, verify access from server
       const allowed = await checkAccessEnabled(visitor.id);
       if (allowed) {
         router.replace('/(guest)/welcome');
       } else {
-        setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
+        setError(lang === 'ar' ? 'عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.' : 'Sorry, your gallery access is restricted. Please contact us.');
       }
     } catch {
-      setError('حدث خطأ، حاول مجدداً');
+      setError(lang === 'ar' ? 'حدث خطأ، حاول مجدداً' : 'An error occurred, please try again');
     } finally {
       setLoading(false);
     }
-  }, [name, phone, registerVisitor, checkAccessEnabled, router]); // Dependencies for useCallback
+  }, [name, phone, lang, registerVisitor, checkAccessEnabled, router]);
 
-  // If already registered in this session, check access then redirect
   useEffect(() => {
     if (isLoadingVisitor) return;
     if (!currentVisitor) return;
-
-    // Verify access status from server before redirecting
     checkAccessEnabled(currentVisitor.id).then(allowed => {
       if (allowed) {
         router.replace('/(guest)/welcome');
       } else {
-        // Blocked visitor — clear session so they can re-register with different info
-        setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
+        setError(lang === 'ar' ? 'عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.' : 'Sorry, your gallery access is restricted.');
       }
     });
-  // The eslint-disable-next-line comment was removed as it's not a syntax error,
-  // but a linter instruction which might be causing the "Definition for rule 'react-hooks/exhaustive-deps' was not found" error
-  }, [isLoadingVisitor, currentVisitor?.id, checkAccessEnabled, router]); // Added missing dependencies to avoid the error
+  }, [isLoadingVisitor, currentVisitor?.id, checkAccessEnabled, router]);
 
-  // Show loading while checking existing session
   if (isLoadingVisitor) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -88,44 +80,47 @@ export default function VisitorRegisterScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Back / Exit */}
+          {/* Top bar */}
           <View style={styles.topBar}>
-            <Pressable onPress={signOut} style={styles.exitBtn}>
-              <MaterialIcons name="exit-to-app" size={16} color={Colors.textSecondary} />
-              <Text style={styles.exitText}>خروج</Text>
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable onPress={toggleLang} style={styles.langBtn}>
+                <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'عر'}</Text>
+              </Pressable>
+              <Pressable onPress={signOut} style={styles.exitBtn}>
+                <MaterialIcons name="exit-to-app" size={16} color={Colors.textSecondary} />
+                <Text style={styles.exitText}>{t('guestExit')}</Text>
+              </Pressable>
+            </View>
           </View>
 
-          {/* Logo / Branding */}
+          {/* Branding */}
           <View style={styles.brandSection}>
             <View style={styles.logoCircle}>
               <MaterialIcons name="palette" size={isTablet ? 56 : 44} color={Colors.primary} />
             </View>
             <Text style={styles.brandName}>S.E Gallery</Text>
-            <Text style={styles.brandSub}>معرض الأعمال الفنية</Text>
+            <Text style={styles.brandSub}>{t('guestGallerySubtitle')}</Text>
           </View>
 
           {/* Card */}
           <View style={[styles.card, isTablet && styles.cardTablet]}>
             <View style={styles.cardHeader}>
               <MaterialIcons name="person-add" size={22} color={Colors.primary} />
-              <Text style={styles.cardTitle}>تسجيل الزائر</Text>
+              <Text style={styles.cardTitle}>{t('guestVisitorReg')}</Text>
             </View>
-            <Text style={styles.cardSubtitle}>
-              أدخل بياناتك للوصول إلى المعرض
-            </Text>
+            <Text style={styles.cardSubtitle}>{t('guestVisitorSub')}</Text>
 
             {/* Name */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>الاسم</Text>
+              <Text style={styles.fieldLabel}>{t('guestNameLabel')}</Text>
               <View style={[styles.inputWrap, error && !name.trim() && styles.inputError]}>
                 <TextInput
                   value={name}
                   onChangeText={v => { setName(v); setError(''); }}
-                  placeholder="اسمك الكريم"
+                  placeholder={t('guestNamePlaceholder')}
                   placeholderTextColor={Colors.textMuted}
                   style={styles.input}
-                  textAlign="right"
+                  textAlign={lang === 'ar' ? 'right' : 'left'}
                   returnKeyType="next"
                   autoCapitalize="words"
                 />
@@ -135,7 +130,7 @@ export default function VisitorRegisterScreen() {
 
             {/* Phone */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>رقم الهاتف</Text>
+              <Text style={styles.fieldLabel}>{t('guestPhoneLabel')}</Text>
               <View style={[styles.inputWrap, error && !phone.trim() && styles.inputError]}>
                 <TextInput
                   value={phone}
@@ -143,7 +138,7 @@ export default function VisitorRegisterScreen() {
                   placeholder="01XXXXXXXXX"
                   placeholderTextColor={Colors.textMuted}
                   style={styles.input}
-                  textAlign="right"
+                  textAlign={lang === 'ar' ? 'right' : 'left'}
                   keyboardType="phone-pad"
                   returnKeyType="done"
                   onSubmitEditing={handleEnter}
@@ -160,12 +155,10 @@ export default function VisitorRegisterScreen() {
               </View>
             ) : null}
 
-            {/* Privacy note */}
+            {/* Privacy */}
             <View style={styles.privacyNote}>
               <MaterialIcons name="lock" size={13} color={Colors.textMuted} />
-              <Text style={styles.privacyText}>
-                بياناتك محمية ولن تُشارك مع أي طرف ثالث
-              </Text>
+              <Text style={styles.privacyText}>{t('guestPrivacy')}</Text>
             </View>
 
             {/* Enter Button */}
@@ -183,16 +176,16 @@ export default function VisitorRegisterScreen() {
               ) : (
                 <>
                   <MaterialIcons name="photo-library" size={20} color="#0d0d0f" />
-                  <Text style={styles.enterBtnText}>دخول المعرض</Text>
+                  <Text style={styles.enterBtnText}>{t('guestEnterGallery')}</Text>
                 </>
               )}
             </Pressable>
           </View>
 
-          {/* Decorative footer */}
+          {/* Footer */}
           <View style={styles.footer}>
             <MaterialIcons name="star" size={10} color={Colors.primary + '60'} />
-            <Text style={styles.footerText}>تجربة مشاهدة فنية متميزة</Text>
+            <Text style={styles.footerText}>{lang === 'ar' ? 'تجربة مشاهدة فنية متميزة' : 'An exceptional art viewing experience'}</Text>
             <MaterialIcons name="star" size={10} color={Colors.primary + '60'} />
           </View>
         </ScrollView>
@@ -205,6 +198,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   scroll: { flexGrow: 1, alignItems: 'center', paddingBottom: 40 },
   topBar: { width: '100%', flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 },
+  langBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primarySurface, borderWidth: 1, borderColor: Colors.primary + '50', alignItems: 'center', justifyContent: 'center' },
+  langBtnText: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: Colors.primary },
   exitBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: Colors.border },
   exitText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   brandSection: { alignItems: 'center', marginTop: Spacing.xxl, marginBottom: Spacing.xl },

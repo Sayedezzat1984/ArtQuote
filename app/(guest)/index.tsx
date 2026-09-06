@@ -12,6 +12,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useApp } from '@/hooks/useApp';
 import { useAuth } from '@/contexts/AuthContext';
 import { useVisitor } from '@/contexts/VisitorContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Artwork } from '@/contexts/AppContext';
 import { isTablet } from '@/constants/responsive';
 
@@ -20,7 +21,6 @@ const CARD_GAP = 12;
 const COLS = isTablet ? 3 : 2;
 const CARD_W = (SCREEN_W - (COLS + 1) * CARD_GAP * (isTablet ? 1.5 : 1.2)) / COLS;
 
-// Auto-sync interval in ms (every 60 seconds while gallery is open)
 const AUTO_SYNC_INTERVAL = 60_000;
 
 type RefreshStatus = 'idle' | 'refreshing' | 'done' | 'new';
@@ -29,12 +29,12 @@ export default function GuestGalleryScreen() {
   const { artworks, artworkCategories, forceSyncNow } = useApp() as any;
   const { signOut } = useAuth();
   const { currentVisitor, checkAccessEnabled, clearSession } = useVisitor();
+  const { lang, toggleLang, t } = useLanguage();
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [catFilter, setCatFilter] = useState('الكل');
+  const [catFilter, setCatFilter] = useState(lang === 'ar' ? 'الكل' : 'All');
   const [isBlocked, setIsBlocked] = useState(false);
 
-  // Refresh state
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
   const [newArtworkIds, setNewArtworkIds] = useState<Set<string>>(new Set());
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -43,7 +43,6 @@ export default function GuestGalleryScreen() {
   const autoSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncing = useRef(false);
 
-  // ── Access check on mount and on return from background ─────────────────────
   useEffect(() => {
     if (!currentVisitor) return;
     checkAccessEnabled(currentVisitor.id).then(allowed => {
@@ -63,54 +62,37 @@ export default function GuestGalleryScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentVisitor?.id]);
 
-  // ── Filter: only show artworks that are visible to visitors (default true for backward compat)
   const visibleArtworks = useMemo(() => {
     return artworks.filter((a: Artwork) => (a as any).visibleToVisitors !== false);
   }, [artworks]);
 
-  // Initialise known IDs on first load (don't mark as new on mount)
   useEffect(() => {
     knownIdsRef.current = new Set(visibleArtworks.map((a: Artwork) => a.id));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only on mount
+  }, []);
 
-  // ── Auto-sync: periodic while gallery is open ─────────────────────────────
   useEffect(() => {
-    // Start interval
-    autoSyncTimer.current = setInterval(() => {
-      silentSync();
-    }, AUTO_SYNC_INTERVAL);
-
-    // Sync immediately when screen mounts
+    autoSyncTimer.current = setInterval(() => { silentSync(); }, AUTO_SYNC_INTERVAL);
     silentSync();
-
-    return () => {
-      if (autoSyncTimer.current) clearInterval(autoSyncTimer.current);
-    };
+    return () => { if (autoSyncTimer.current) clearInterval(autoSyncTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Auto-sync: when app returns to foreground ─────────────────────────────
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') {
-        silentSync();
-      }
+      if (state === 'active') silentSync();
     });
     return () => sub.remove();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Silent sync: doesn't show loading but detects new artworks ────────────
   const silentSync = useCallback(async () => {
     if (isSyncing.current) return;
     isSyncing.current = true;
     try {
       const prevIds = new Set(knownIdsRef.current);
       await forceSyncNow();
-      // Brief wait for state to settle — artworks state updates via Firestore listener
       await new Promise(res => setTimeout(res, 600));
-      // Read current artworks from ref to avoid stale closure
       const allArtworks: Artwork[] = (artworks as Artwork[]).filter(
         (a: Artwork) => (a as any).visibleToVisitors !== false
       );
@@ -120,11 +102,10 @@ export default function GuestGalleryScreen() {
       knownIdsRef.current = currentIds;
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
-        // Auto-clear NEW badges after 10 seconds
         setTimeout(() => setNewArtworkIds(new Set()), 10_000);
       }
     } catch {
-      // Silent — don't surface errors for background sync
+      // silent
     } finally {
       isSyncing.current = false;
     }
@@ -140,7 +121,6 @@ export default function GuestGalleryScreen() {
     toastTimer.current = setTimeout(() => setRefreshStatus('idle'), 3000);
   }
 
-  // ── Manual refresh ────────────────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
     if (refreshStatus === 'refreshing') return;
     setRefreshStatus('refreshing');
@@ -155,7 +135,6 @@ export default function GuestGalleryScreen() {
       const addedIds = new Set<string>();
       currentIds.forEach((id: string) => { if (!prevIds.has(id)) addedIds.add(id); });
       knownIdsRef.current = currentIds;
-
       if (addedIds.size > 0) {
         setNewArtworkIds(addedIds);
         setRefreshStatus('new');
@@ -169,7 +148,7 @@ export default function GuestGalleryScreen() {
     }
   }, [refreshStatus, forceSyncNow, artworks]);
 
-  const ALL_LABEL = 'الكل';
+  const ALL_LABEL = lang === 'ar' ? 'الكل' : 'All';
   const categoryLabels = [ALL_LABEL, ...artworkCategories.map((c: any) => c.name)];
 
   const filtered = useMemo(() => {
@@ -178,11 +157,13 @@ export default function GuestGalleryScreen() {
       const matchCat = catFilter === ALL_LABEL || a.category === catFilter;
       return matchSearch && matchCat;
     });
-  }, [visibleArtworks, search, catFilter]);
+  }, [visibleArtworks, search, catFilter, ALL_LABEL]);
 
-  const toastMessage =
-    refreshStatus === 'new' ? 'تم إضافة أعمال جديدة ✦' :
-    refreshStatus === 'done' ? 'تم تحديث المعرض' : '';
+  const toastMsg = refreshStatus === 'new'
+    ? (lang === 'ar' ? 'تم إضافة أعمال جديدة ✦' : 'New artworks added ✦')
+    : refreshStatus === 'done'
+    ? (lang === 'ar' ? 'تم تحديث المعرض' : 'Gallery updated')
+    : '';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -192,192 +173,186 @@ export default function GuestGalleryScreen() {
           <View style={styles.blockedIcon}>
             <MaterialIcons name="block" size={56} color={Colors.error} />
           </View>
-          <Text style={styles.blockedTitle}>وصولك محدود</Text>
-          <Text style={styles.blockedMsg}>
-            {'وصولك للمعرض غير متاح حالياً.\nيرجى التواصل معنا للمزيد من المعلومات.'}
-          </Text>
+          <Text style={styles.blockedTitle}>{t('guestBlockedTitle')}</Text>
+          <Text style={styles.blockedMsg}>{t('guestBlockedMsg')}</Text>
           <Pressable onPress={async () => { await clearSession(); signOut(); }} style={styles.blockedExitBtn}>
             <MaterialIcons name="exit-to-app" size={18} color={Colors.textSecondary} />
-            <Text style={styles.blockedExitText}>خروج</Text>
+            <Text style={styles.blockedExitText}>{t('guestExit')}</Text>
           </Pressable>
         </View>
       ) : null}
 
-      {/* Main Gallery (shown when not blocked) */}
+      {/* Main Gallery */}
       {!isBlocked ? (
         <>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={signOut} style={styles.backBtn}>
-          <MaterialIcons name="exit-to-app" size={18} color={Colors.textSecondary} />
-          <Text style={styles.backBtnText}>خروج</Text>
-        </Pressable>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>S.E Gallery</Text>
-          <Text style={styles.subtitle}>معرض الأعمال الفنية</Text>
-        </View>
-        {/* Refresh Button */}
-        <Pressable
-          onPress={handleRefresh}
-          disabled={refreshStatus === 'refreshing'}
-          style={({ pressed }) => [
-            styles.refreshBtn,
-            pressed && { opacity: 0.8 },
-            refreshStatus === 'refreshing' && styles.refreshBtnActive,
-          ]}
-          accessibilityLabel="تحديث الأعمال"
-        >
-          {refreshStatus === 'refreshing' ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <MaterialIcons
-              name="refresh"
-              size={20}
-              color={refreshStatus === 'new' ? Colors.success : Colors.primary}
-            />
-          )}
-        </Pressable>
-      </View>
-
-      {/* Refreshing status bar */}
-      {refreshStatus === 'refreshing' ? (
-        <View style={styles.statusBar}>
-          <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />
-          <Text style={styles.statusBarText}>جاري تحديث الأعمال...</Text>
-        </View>
-      ) : null}
-
-      {/* Divider line */}
-      <View style={styles.headerDivider} />
-
-      {/* Search */}
-      <View style={styles.searchRow}>
-        <View style={styles.searchBar}>
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث في الأعمال..."
-            placeholderTextColor={Colors.textMuted}
-            style={styles.searchInput}
-            textAlign="right"
-          />
-          {search ? (
-            <Pressable onPress={() => setSearch('')} hitSlop={8}>
-              <MaterialIcons name="close" size={16} color={Colors.textMuted} />
+          {/* Header */}
+          <View style={styles.header}>
+            <Pressable onPress={signOut} style={styles.backBtn}>
+              <MaterialIcons name="exit-to-app" size={18} color={Colors.textSecondary} />
+              <Text style={styles.backBtnText}>{t('guestExit')}</Text>
             </Pressable>
-          ) : (
-            <MaterialIcons name="search" size={18} color={Colors.textMuted} />
-          )}
-        </View>
-      </View>
+            <View style={styles.titleBlock}>
+              <Text style={styles.title}>S.E Gallery</Text>
+              <Text style={styles.subtitle}>{t('guestGallerySubtitle')}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              {/* Language Toggle */}
+              <Pressable onPress={toggleLang} style={styles.langBtn}>
+                <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'عر'}</Text>
+              </Pressable>
+              {/* Refresh Button */}
+              <Pressable
+                onPress={handleRefresh}
+                disabled={refreshStatus === 'refreshing'}
+                style={({ pressed }) => [
+                  styles.refreshBtn,
+                  pressed && { opacity: 0.8 },
+                  refreshStatus === 'refreshing' && styles.refreshBtnActive,
+                ]}
+              >
+                {refreshStatus === 'refreshing' ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <MaterialIcons
+                    name="refresh"
+                    size={20}
+                    color={refreshStatus === 'new' ? Colors.success : Colors.primary}
+                  />
+                )}
+              </Pressable>
+            </View>
+          </View>
 
-      {/* Category chips */}
-      {categoryLabels.length > 1 ? (
-        <View style={styles.catOuter}>
+          {/* Refreshing status bar */}
+          {refreshStatus === 'refreshing' ? (
+            <View style={styles.statusBar}>
+              <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />
+              <Text style={styles.statusBarText}>{t('guestRefreshing')}</Text>
+            </View>
+          ) : null}
+
+          {/* Divider */}
+          <View style={styles.headerDivider} />
+
+          {/* Search */}
+          <View style={styles.searchRow}>
+            <View style={styles.searchBar}>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t('guestSearchPlaceholder')}
+                placeholderTextColor={Colors.textMuted}
+                style={styles.searchInput}
+                textAlign={lang === 'ar' ? 'right' : 'left'}
+              />
+              {search ? (
+                <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                  <MaterialIcons name="close" size={16} color={Colors.textMuted} />
+                </Pressable>
+              ) : (
+                <MaterialIcons name="search" size={18} color={Colors.textMuted} />
+              )}
+            </View>
+          </View>
+
+          {/* Category chips */}
+          {categoryLabels.length > 1 ? (
+            <View style={styles.catOuter}>
+              <FlatList
+                data={categoryLabels}
+                horizontal
+                keyExtractor={(_, i) => i.toString()}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.catContent}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => setCatFilter(item)}
+                    style={[styles.catChip, catFilter === item && styles.catChipActive]}
+                  >
+                    <Text style={[styles.catChipText, catFilter === item && styles.catChipTextActive]}>
+                      {item}
+                    </Text>
+                  </Pressable>
+                )}
+              />
+            </View>
+          ) : null}
+
+          {/* Count */}
+          <View style={styles.countRow}>
+            <Text style={styles.countText}>{filtered.length} {t('guestArtworkCount')}</Text>
+          </View>
+
+          {/* Gallery Grid */}
           <FlatList
-            data={categoryLabels}
-            horizontal
-            keyExtractor={(_, i) => i.toString()}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.catContent}
+            data={filtered}
+            keyExtractor={a => a.id}
+            numColumns={COLS}
+            contentContainerStyle={styles.grid}
+            showsVerticalScrollIndicator={false}
+            columnWrapperStyle={styles.columnWrapper}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <MaterialIcons name="palette" size={64} color={Colors.textMuted} />
+                <Text style={styles.emptyTitle}>{lang === 'ar' ? 'لا توجد أعمال' : 'No artworks'}</Text>
+                <Text style={styles.emptySubtitle}>{lang === 'ar' ? 'جرّب تعديل كلمة البحث أو الفئة' : 'Try changing the search or category'}</Text>
+              </View>
+            }
             renderItem={({ item }) => (
               <Pressable
-                onPress={() => setCatFilter(item)}
-                style={[styles.catChip, catFilter === item && styles.catChipActive]}
+                onPress={() => router.push(`/(guest)/${item.id}`)}
+                style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
               >
-                <Text style={[styles.catChipText, catFilter === item && styles.catChipTextActive]}>
-                  {item}
-                </Text>
+                <View style={styles.imgContainer}>
+                  {item.image ? (
+                    <Image source={{ uri: item.image }} style={styles.img} contentFit="cover" transition={200} />
+                  ) : (
+                    <View style={styles.imgPlaceholder}>
+                      <MaterialIcons name="palette" size={32} color={Colors.primary + '60'} />
+                    </View>
+                  )}
+                  {item.category ? (
+                    <View style={styles.catBadge}>
+                      <Text style={styles.catBadgeText} numberOfLines={1}>{item.category}</Text>
+                    </View>
+                  ) : null}
+                  {newArtworkIds.has(item.id) ? (
+                    <View style={styles.newBadge}>
+                      <Text style={styles.newBadgeText}>{t('guestNewBadge')}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+                  {item.year ? <Text style={styles.cardYear}>{item.year}</Text> : null}
+                  {item.showPriceToCustomer !== false && item.price > 0 ? (
+                    <Text style={styles.cardPrice}>{Number(item.price).toLocaleString()} {t('currency')}</Text>
+                  ) : item.showPriceToCustomer === false ? (
+                    <View style={styles.cardPriceHidden}>
+                      <MaterialIcons name="chat" size={10} color={Colors.primary} />
+                      <Text style={styles.cardPriceHiddenText}>{t('guestContactPrice')}</Text>
+                    </View>
+                  ) : null}
+                </View>
               </Pressable>
             )}
           />
-        </View>
+
+          {/* Toast */}
+          {toastMsg ? (
+            <Animated.View style={[styles.toast, { opacity: toastOpacity }, refreshStatus === 'new' && styles.toastNew]}>
+              <MaterialIcons
+                name={refreshStatus === 'new' ? 'fiber-new' : 'check-circle'}
+                size={16}
+                color={refreshStatus === 'new' ? Colors.success : Colors.primary}
+              />
+              <Text style={[styles.toastText, refreshStatus === 'new' && { color: Colors.success }]}>
+                {toastMsg}
+              </Text>
+            </Animated.View>
+          ) : null}
+        </>
       ) : null}
-
-      {/* Count */}
-      <View style={styles.countRow}>
-        <Text style={styles.countText}>{filtered.length} عمل فني</Text>
-      </View>
-
-      {/* Gallery Grid */}
-      <FlatList
-        data={filtered}
-        keyExtractor={a => a.id}
-        numColumns={COLS}
-        contentContainerStyle={styles.grid}
-        showsVerticalScrollIndicator={false}
-        columnWrapperStyle={styles.columnWrapper}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <MaterialIcons name="palette" size={64} color={Colors.textMuted} />
-            <Text style={styles.emptyTitle}>لا توجد أعمال</Text>
-            <Text style={styles.emptySubtitle}>جرّب تعديل كلمة البحث أو الفئة</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push(`/(guest)/${item.id}`)}
-            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          >
-            {/* Image */}
-            <View style={styles.imgContainer}>
-              {item.image ? (
-                <Image
-                  source={{ uri: item.image }}
-                  style={styles.img}
-                  contentFit="cover"
-                  transition={200}
-                />
-              ) : (
-                <View style={styles.imgPlaceholder}>
-                  <MaterialIcons name="palette" size={32} color={Colors.primary + '60'} />
-                </View>
-              )}
-              {/* Category badge */}
-              {item.category ? (
-                <View style={styles.catBadge}>
-                  <Text style={styles.catBadgeText} numberOfLines={1}>{item.category}</Text>
-                </View>
-              ) : null}
-              {/* NEW badge */}
-              {newArtworkIds.has(item.id) ? (
-                <View style={styles.newBadge}>
-                  <Text style={styles.newBadgeText}>جديد</Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Name */}
-            <View style={styles.cardBody}>
-              <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-              {item.year ? <Text style={styles.cardYear}>{item.year}</Text> : null}
-              {item.showPriceToCustomer !== false && item.price > 0 ? (
-                <Text style={styles.cardPrice}>{Number(item.price).toLocaleString()} ج.م</Text>
-              ) : item.showPriceToCustomer === false ? (
-                <View style={styles.cardPriceHidden}>
-                  <MaterialIcons name="chat" size={10} color={Colors.primary} />
-                  <Text style={styles.cardPriceHiddenText}>تواصل للسعر</Text>
-                </View>
-              ) : null}
-            </View>
-          </Pressable>
-        )}
-      />
-
-      {/* Toast notification */}
-      {toastMessage ? (
-        <Animated.View style={[styles.toast, { opacity: toastOpacity }, refreshStatus === 'new' && styles.toastNew]}>
-          <MaterialIcons
-            name={refreshStatus === 'new' ? 'fiber-new' : 'check-circle'}
-            size={16}
-            color={refreshStatus === 'new' ? Colors.success : Colors.primary}
-          />
-          <Text style={[styles.toastText, refreshStatus === 'new' && { color: Colors.success }]}>
-            {toastMessage}
-          </Text>
-        </Animated.View>
-      ) : null}
-      </> ) : null}
     </SafeAreaView>
   );
 }
@@ -385,7 +360,6 @@ export default function GuestGalleryScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,7 +388,23 @@ const styles = StyleSheet.create({
   },
   subtitle: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 1 },
 
-  // Refresh button
+  langBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primarySurface,
+    borderWidth: 1,
+    borderColor: Colors.primary + '60',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.primary,
+    letterSpacing: 0.5,
+  },
+
   refreshBtn: {
     width: 40,
     height: 40,
@@ -430,7 +420,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
 
-  // Status bar (while refreshing)
   statusBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -449,7 +438,6 @@ const styles = StyleSheet.create({
 
   headerDivider: { height: 1, backgroundColor: Colors.border },
 
-  // Search
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
   searchBar: {
     flexDirection: 'row',
@@ -468,7 +456,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // Category filter
   catOuter: { height: 46 },
   catContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   catChip: {
@@ -483,15 +470,12 @@ const styles = StyleSheet.create({
   catChipText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   catChipTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
 
-  // Count
   countRow: { paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4 },
   countText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right' },
 
-  // Grid
   grid: { paddingHorizontal: CARD_GAP, paddingBottom: 32 },
   columnWrapper: { gap: CARD_GAP, marginBottom: CARD_GAP },
 
-  // Card
   card: {
     width: CARD_W,
     backgroundColor: Colors.card,
@@ -527,7 +511,6 @@ const styles = StyleSheet.create({
   },
   catBadgeText: { fontSize: 9, color: '#fff', fontWeight: FontWeight.semibold },
 
-  // NEW badge
   newBadge: {
     position: 'absolute',
     top: 7,
@@ -559,12 +542,10 @@ const styles = StyleSheet.create({
   cardPriceHidden: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, justifyContent: 'flex-end' },
   cardPriceHiddenText: { fontSize: 9, color: Colors.primary, fontWeight: FontWeight.medium },
 
-  // Empty
   empty: { alignItems: 'center', paddingVertical: 80 },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginTop: 16 },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 6, textAlign: 'center' },
 
-  // Toast
   toast: {
     position: 'absolute',
     bottom: 24,
@@ -590,7 +571,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
 
-  // Blocked visitor
   blockedContainer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Colors.background,

@@ -12,6 +12,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constan
 import { useApp } from '@/hooks/useApp';
 import { isTablet } from '@/constants/responsive';
 import { useVisitor } from '@/contexts/VisitorContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -20,6 +21,7 @@ export default function GuestArtworkDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { artworks, materials, appSettings } = useApp() as any;
+  const { lang, toggleLang, t } = useLanguage();
 
   const artwork = artworks.find((a: any) => a.id === id);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -35,14 +37,21 @@ export default function GuestArtworkDetailScreen() {
   const openWhatsApp = useCallback(() => {
     const number = appSettings?.whatsappNumber?.replace(/\D/g, '') || '';
     if (!number) {
-      Alert.alert('تواصل', 'رقم واتساب غير متوفر حالياً. يرجى التواصل مع الإدارة.');
+      Alert.alert(
+        lang === 'ar' ? 'تواصل' : 'Contact',
+        lang === 'ar' ? 'رقم واتساب غير متوفر حالياً.' : 'WhatsApp number not available.'
+      );
       return;
     }
-    const message = encodeURIComponent(`مرحباً، أود الاستفسار عن العمل الفني: ${artwork?.title || ''}`);
+    const message = encodeURIComponent(
+      lang === 'ar'
+        ? `مرحباً، أود الاستفسار عن العمل الفني: ${artwork?.title || ''}`
+        : `Hello, I'd like to inquire about the artwork: ${artwork?.title || ''}`
+    );
     Linking.openURL(`https://wa.me/${number}?text=${message}`).catch(() => {
       Linking.openURL(`https://wa.me/${number}`);
     });
-  }, [appSettings, artwork]);
+  }, [appSettings, artwork, lang]);
 
   if (!artwork) {
     return (
@@ -83,10 +92,15 @@ export default function GuestArtworkDetailScreen() {
         <View style={styles.topBarRight}>
           <Text style={styles.topBarTitle} numberOfLines={1}>{artwork.title}</Text>
         </View>
-        <Pressable onPress={() => router.back()} style={styles.topBackBtn}>
-          <MaterialIcons name="arrow-back-ios" size={18} color={Colors.textPrimary} />
-          <Text style={styles.topBackText}>المعرض</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable onPress={toggleLang} style={styles.langBtn}>
+            <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'عر'}</Text>
+          </Pressable>
+          <Pressable onPress={() => router.back()} style={styles.topBackBtn}>
+            <MaterialIcons name="arrow-back-ios" size={18} color={Colors.textPrimary} />
+            <Text style={styles.topBackText}>{t('guestGallery')}</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -148,7 +162,7 @@ export default function GuestArtworkDetailScreen() {
           {/* Description */}
           {artwork.description ? (
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>الوصف</Text>
+              <Text style={styles.sectionLabel}>{t('guestDescription')}</Text>
               <Text style={styles.descriptionText}>{artwork.description}</Text>
             </View>
           ) : null}
@@ -156,7 +170,7 @@ export default function GuestArtworkDetailScreen() {
           {/* Dimensions */}
           {dimensionParts.length > 0 ? (
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>المقاسات</Text>
+              <Text style={styles.sectionLabel}>{t('guestDimensions')}</Text>
               <View style={styles.dimGrid}>
                 {dimensionParts.map((d, i) => {
                   const [label, value] = d.split(': ');
@@ -174,7 +188,7 @@ export default function GuestArtworkDetailScreen() {
           {/* Materials */}
           {artworkMaterials.length > 0 ? (
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>الخامات</Text>
+              <Text style={styles.sectionLabel}>{t('guestMaterials')}</Text>
               <View style={styles.tagsRow}>
                 {artworkMaterials.map((m: any) => (
                   <View key={m.id} style={styles.tag}>
@@ -189,13 +203,13 @@ export default function GuestArtworkDetailScreen() {
           {/* Price */}
           {artwork.showPriceToCustomer !== false && artwork.price > 0 ? (
             <View style={styles.priceSection}>
-              <Text style={styles.priceLabel}>السعر</Text>
-              <Text style={styles.priceValue}>{Number(artwork.price).toLocaleString()} ج.م</Text>
+              <Text style={styles.priceLabel}>{t('guestPrice')}</Text>
+              <Text style={styles.priceValue}>{Number(artwork.price).toLocaleString()} {t('currency')}</Text>
             </View>
           ) : artwork.showPriceToCustomer === false ? (
             <View style={styles.priceHiddenRow}>
               <MaterialIcons name="chat" size={15} color={Colors.primary} />
-              <Text style={styles.priceHiddenMsg}>تواصل معنا للاستفسار عن السعر</Text>
+              <Text style={styles.priceHiddenMsg}>{t('guestPriceHidden')}</Text>
             </View>
           ) : null}
 
@@ -204,7 +218,7 @@ export default function GuestArtworkDetailScreen() {
             <View style={[styles.availBadge, { backgroundColor: artwork.available ? Colors.successSurface : Colors.errorSurface, borderColor: artwork.available ? Colors.success + '60' : Colors.error + '60' }]}>
               <MaterialIcons name={artwork.available ? 'check-circle' : 'cancel'} size={14} color={artwork.available ? Colors.success : Colors.error} />
               <Text style={[styles.availText, { color: artwork.available ? Colors.success : Colors.error }]}>
-                {artwork.available ? 'متاح' : 'غير متاح حالياً'}
+                {artwork.available ? t('guestAvailable') : t('guestUnavailable')}
               </Text>
             </View>
           </View>
@@ -224,7 +238,7 @@ export default function GuestArtworkDetailScreen() {
       <View style={[styles.waBar, { paddingBottom: insets.bottom + 8 }]}>
         <Pressable onPress={openWhatsApp} style={({ pressed }) => [styles.waBtn, pressed && { opacity: 0.85 }]}>
           <MaterialIcons name="chat" size={22} color="#fff" />
-          <Text style={styles.waBtnText}>تواصل عبر واتساب</Text>
+          <Text style={styles.waBtnText}>{t('guestContactBtn')}</Text>
         </Pressable>
       </View>
 
@@ -277,6 +291,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     backgroundColor: Colors.surface,
+  },
+  langBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primarySurface,
+    borderWidth: 1,
+    borderColor: Colors.primary + '60',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.primary,
   },
   topBackBtn: {
     flexDirection: 'row',

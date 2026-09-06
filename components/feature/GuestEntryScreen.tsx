@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { upsertDocSilent, fetchOnce, uid } from '@/services/firestoreService';
 import { COLLECTIONS, ADMIN_EMAIL } from '@/services/firebase';
 import { isTablet } from '@/constants/responsive';
@@ -33,7 +34,6 @@ function AdminLoginSheet({ visible, onClose }: { visible: boolean; onClose: () =
   async function handleLogin() {
     if (!email.trim() || !password) return;
     await signIn(email, password);
-    // onAuthStateChanged in AuthContext will update appMode → onClose is not needed
   }
 
   async function handleReset() {
@@ -221,6 +221,7 @@ const al = StyleSheet.create({
 // ─── Main GuestEntryScreen ────────────────────────────────────────────────────
 export function GuestEntryScreen() {
   const { enterClientMode } = useAuth();
+  const { lang, toggleLang, t } = useLanguage();
   const insets = useSafeAreaInsets();
 
   const [name, setName]           = useState('');
@@ -229,7 +230,6 @@ export function GuestEntryScreen() {
   const [error, setError]         = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
 
-  // Entrance animations
   const logoAnim  = useRef(new Animated.Value(0)).current;
   const formAnim  = useRef(new Animated.Value(0)).current;
   const formY     = useRef(new Animated.Value(30)).current;
@@ -260,9 +260,9 @@ export function GuestEntryScreen() {
   async function handleEnter() {
     const trimName  = name.trim();
     const trimPhone = phone.trim();
-    if (!trimName)              { setError('يرجى إدخال الاسم'); return; }
-    if (!trimPhone)             { setError('يرجى إدخال رقم الهاتف'); return; }
-    if (trimPhone.length < 8)   { setError('رقم الهاتف غير صحيح'); return; }
+    if (!trimName)            { setError(lang === 'ar' ? 'يرجى إدخال الاسم' : 'Please enter your name'); return; }
+    if (!trimPhone)           { setError(lang === 'ar' ? 'يرجى إدخال رقم الهاتف' : 'Please enter your phone'); return; }
+    if (trimPhone.length < 8) { setError(lang === 'ar' ? 'رقم الهاتف غير صحيح' : 'Invalid phone number'); return; }
     setError('');
     setLoading(true);
 
@@ -270,14 +270,12 @@ export function GuestEntryScreen() {
       const now = new Date().toISOString();
       let visitor: any;
 
-      // Check for existing visitor by phone (best-effort)
       try {
         const existing = await fetchOnce(COLLECTIONS.visitors);
         const found = existing.find((v: any) => v.phone === trimPhone);
         if (found) {
-          // Returning visitor — check if blocked
           if (found.accessEnabled === false) {
-            setError('عذراً، تم تقييد وصولك للمعرض. يرجى التواصل معنا.');
+            setError(lang === 'ar' ? 'عذراً، تم تقييد وصولك للمعرض.' : 'Sorry, your gallery access is restricted.');
             setLoading(false);
             return;
           }
@@ -312,16 +310,11 @@ export function GuestEntryScreen() {
         };
       }
 
-      // Save to AsyncStorage first (guaranteed)
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(visitor));
-
-      // Save to Firestore silently
       upsertDocSilent(COLLECTIONS.visitors, visitor.id, visitor).catch(() => {});
-
-      // Enter client (guest) mode → triggers guest stack
       enterClientMode();
     } catch {
-      setError('حدث خطأ، حاول مجدداً');
+      setError(lang === 'ar' ? 'حدث خطأ، حاول مجدداً' : 'An error occurred, please try again');
     } finally {
       setLoading(false);
     }
@@ -329,7 +322,6 @@ export function GuestEntryScreen() {
 
   return (
     <View style={gs.root}>
-      {/* Background gradient */}
       <LinearGradient
         colors={['#0d0d0f', '#1a1408', '#2b1f00', '#1a1408', '#0d0d0f']}
         locations={[0, 0.25, 0.5, 0.75, 1]}
@@ -337,8 +329,6 @@ export function GuestEntryScreen() {
         start={{ x: 0.3, y: 0 }}
         end={{ x: 0.7, y: 1 }}
       />
-
-      {/* Golden glow */}
       <View style={gs.glow} />
 
       <SafeAreaView style={gs.safe} edges={['top', 'bottom']}>
@@ -351,10 +341,8 @@ export function GuestEntryScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-
             {/* ── Branding ── */}
             <Animated.View style={[gs.brand, { opacity: logoAnim }]}>
-              {/* Logo rings */}
               <View style={gs.logoWrap}>
                 <View style={gs.logoRing2} />
                 <View style={gs.logoRing1} />
@@ -367,11 +355,9 @@ export function GuestEntryScreen() {
                   />
                 </View>
               </View>
-
-              {/* Gold divider */}
               <View style={gs.divider} />
               <Text style={gs.brandName}>S.E Gallery</Text>
-              <Text style={gs.brandSub}>معرض الأعمال الفنية</Text>
+              <Text style={gs.brandSub}>{t('guestGallerySubtitle')}</Text>
               <View style={gs.starRow}>
                 {[0,1,2,3,4].map(i => (
                   <MaterialIcons key={i} name="star" size={11} color={Colors.primary} style={{ opacity: 0.65 }} />
@@ -390,21 +376,21 @@ export function GuestEntryScreen() {
             >
               <View style={gs.cardHeader}>
                 <MaterialIcons name="person-add" size={20} color={Colors.primary} />
-                <Text style={gs.cardTitle}>تسجيل الزيارة</Text>
+                <Text style={gs.cardTitle}>{t('guestRegTitle')}</Text>
               </View>
-              <Text style={gs.cardSub}>أدخل بياناتك للدخول إلى المعرض</Text>
+              <Text style={gs.cardSub}>{t('guestRegSub')}</Text>
 
               {/* Name */}
               <View style={gs.fieldGroup}>
-                <Text style={gs.fieldLabel}>الاسم *</Text>
+                <Text style={gs.fieldLabel}>{t('guestNameLabel')} *</Text>
                 <View style={[gs.inputWrap, error && !name.trim() ? gs.inputError : null]}>
                   <TextInput
                     value={name}
                     onChangeText={v => { setName(v); setError(''); }}
-                    placeholder="اسمك الكريم"
+                    placeholder={t('guestNamePlaceholder')}
                     placeholderTextColor={Colors.textMuted}
                     style={gs.input}
-                    textAlign="right"
+                    textAlign={lang === 'ar' ? 'right' : 'left'}
                     returnKeyType="next"
                     autoCapitalize="words"
                   />
@@ -414,7 +400,7 @@ export function GuestEntryScreen() {
 
               {/* Phone */}
               <View style={gs.fieldGroup}>
-                <Text style={gs.fieldLabel}>رقم الهاتف *</Text>
+                <Text style={gs.fieldLabel}>{t('guestPhoneLabel')} *</Text>
                 <View style={[gs.inputWrap, error && !phone.trim() ? gs.inputError : null]}>
                   <TextInput
                     value={phone}
@@ -422,7 +408,7 @@ export function GuestEntryScreen() {
                     placeholder="01XXXXXXXXX"
                     placeholderTextColor={Colors.textMuted}
                     style={gs.input}
-                    textAlign="right"
+                    textAlign={lang === 'ar' ? 'right' : 'left'}
                     keyboardType="phone-pad"
                     returnKeyType="done"
                     onSubmitEditing={handleEnter}
@@ -442,7 +428,7 @@ export function GuestEntryScreen() {
               {/* Privacy */}
               <View style={gs.privacyNote}>
                 <MaterialIcons name="lock" size={12} color={Colors.textMuted} />
-                <Text style={gs.privacyText}>بياناتك محمية ولن تُشارك مع أي طرف ثالث</Text>
+                <Text style={gs.privacyText}>{t('guestPrivacy')}</Text>
               </View>
 
               {/* Primary CTA */}
@@ -455,7 +441,6 @@ export function GuestEntryScreen() {
                   loading && { opacity: 0.7 },
                 ]}
               >
-                {/* Shimmer */}
                 <Animated.View style={[gs.shimmer, { transform: [{ translateX: shimmerX }] }]} />
                 <LinearGradient
                   colors={[Colors.primary + 'FF', '#FFD96A', Colors.primary + 'FF']}
@@ -467,7 +452,7 @@ export function GuestEntryScreen() {
                     : (
                       <>
                         <MaterialIcons name="photo-library" size={22} color="#0d0d0f" />
-                        <Text style={gs.ctaText}>دخول كزائر</Text>
+                        <Text style={gs.ctaText}>{t('guestEnterVisitor')}</Text>
                       </>
                     )}
                 </LinearGradient>
@@ -481,20 +466,24 @@ export function GuestEntryScreen() {
               <View style={gs.stripLine} />
             </View>
 
+            {/* ── Language Toggle ── */}
+            <Pressable onPress={toggleLang} style={gs.langBtn}>
+              <Text style={gs.langBtnText}>{lang === 'ar' ? 'EN' : 'عر'}</Text>
+            </Pressable>
+
             {/* ── Admin Login small button ── */}
             <Pressable
               onPress={() => setShowAdmin(true)}
               style={({ pressed }) => [gs.adminBtn, pressed && { opacity: 0.7 }]}
             >
               <MaterialIcons name="settings" size={14} color={Colors.textMuted + 'CC'} />
-              <Text style={gs.adminBtnText}>دخول الإدارة</Text>
+              <Text style={gs.adminBtnText}>{t('guestAdminBtn')}</Text>
             </Pressable>
 
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Admin Login Sheet */}
       <AdminLoginSheet visible={showAdmin} onClose={() => setShowAdmin(false)} />
     </View>
   );
@@ -523,7 +512,6 @@ const gs = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { flexGrow: 1, alignItems: 'center', paddingTop: Spacing.xl },
 
-  // Branding
   brand: { alignItems: 'center', marginBottom: Spacing.xl, paddingHorizontal: 20 },
   logoWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg },
   logoRing2: {
@@ -552,7 +540,6 @@ const gs = StyleSheet.create({
   brandSub: { fontSize: isTablet ? FontSize.lg : FontSize.base, color: '#C8A84B', letterSpacing: 1.2, marginTop: 4, opacity: 0.85 },
   starRow: { flexDirection: 'row', gap: 5, marginTop: 8 },
 
-  // Card
   card: {
     width: '92%', backgroundColor: 'rgba(26,20,8,0.92)',
     borderRadius: Radius.xl, padding: Spacing.xl,
@@ -587,7 +574,6 @@ const gs = StyleSheet.create({
   privacyNote: { flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center', marginBottom: Spacing.xl },
   privacyText: { fontSize: FontSize.xs, color: Colors.textMuted },
 
-  // CTA
   ctaBtn: {
     borderRadius: Radius.xl, overflow: 'hidden',
     shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
@@ -604,12 +590,22 @@ const gs = StyleSheet.create({
     transform: [{ skewX: '-20deg' }], zIndex: 1,
   },
 
-  // Bottom strip
   bottomStrip: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     width: '50%', marginTop: Spacing.xl, marginBottom: Spacing.sm,
   },
   stripLine: { flex: 1, height: 1, backgroundColor: Colors.primary, opacity: 0.18 },
+
+  // Language Toggle button
+  langBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 28, paddingVertical: 9,
+    borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.primary + '40',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginBottom: Spacing.sm,
+  },
+  langBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 1 },
 
   // Admin button (subtle, bottom)
   adminBtn: {

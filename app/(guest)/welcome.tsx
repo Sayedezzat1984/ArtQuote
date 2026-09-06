@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useVisitor } from '@/contexts/VisitorContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { isTablet } from '@/constants/responsive';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -18,6 +19,7 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currentVisitor } = useVisitor();
+  const { lang, toggleLang, t } = useLanguage();
 
   // Animations
   const logoScale   = useRef(new Animated.Value(0.6)).current;
@@ -98,7 +100,10 @@ export default function WelcomeScreen() {
               hitSlop={12}
             >
               <MaterialIcons name="arrow-back-ios" size={14} color={Colors.primary + 'AA'} />
-              <Text style={styles.exitText}>رجوع</Text>
+              <Text style={styles.exitText}>{t('guestBack')}</Text>
+            </Pressable>
+            <Pressable onPress={toggleLang} style={styles.langBtn}>
+              <Text style={styles.langBtnText}>{lang === 'ar' ? 'EN' : 'عر'}</Text>
             </Pressable>
           </View>
 
@@ -121,13 +126,13 @@ export default function WelcomeScreen() {
             {/* Gold divider */}
             <View style={styles.divider} />
             <Text style={styles.artistName}>S.E Gallery</Text>
-            <Text style={styles.galleryTitle}>معرض الأعمال الفنية</Text>
+            <Text style={styles.galleryTitle}>{t('guestGallerySubtitle')}</Text>
             <View style={styles.divider} />
             {/* Tagline */}
             <Text style={styles.tagline}>
               {currentVisitor?.name
-                ? `أهلاً وسهلاً، ${currentVisitor.name}`
-                : 'اكتشف تحف فنية استثنائية'}
+                ? (lang === 'ar' ? `أهلاً وسهلاً، ${currentVisitor.name}` : `Welcome, ${currentVisitor.name}`)
+                : t('guestTagline')}
             </Text>
             <View style={styles.starRow}>
               {['star', 'star', 'star', 'star', 'star'].map((_, i) => (
@@ -156,13 +161,13 @@ export default function WelcomeScreen() {
                 style={styles.ctaGradient}
               >
                 <MaterialIcons name="photo-library" size={22} color="#0d0d0f" />
-                <Text style={styles.ctaText}>استعرض الأعمال</Text>
+                <Text style={styles.ctaText}>{t('guestBrowse')}</Text>
                 <MaterialIcons name="arrow-back-ios" size={16} color="#0d0d0f" style={{ transform: [{ rotate: '180deg' }] }} />
               </LinearGradient>
             </Pressable>
 
             {/* Sub hint */}
-            <Text style={styles.ctaHint}>اضغط لدخول المعرض الآن</Text>
+    <Text style={styles.ctaHint}>{lang === 'ar' ? 'اضغط لدخول المعرض الآن' : 'Tap to enter the gallery now'}</Text>
           </Animated.View>
 
           {/* Bottom decorative strip */}
@@ -223,11 +228,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
 
-  // Top bar
   topBar: {
     width: '100%',
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: 8,
   },
   exitBtn: {
@@ -245,6 +250,21 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     color: Colors.primary + 'AA',
     fontWeight: FontWeight.medium,
+  },
+  langBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.primary,
   },
 
   // Logo
